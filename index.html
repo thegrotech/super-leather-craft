@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Leather Craft - Accounting System</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-wallet fa-3x"></i>
+                <h1>Super Leather Craft Accounts</h1>
+                <p>Single Entry Accounting System</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="username" placeholder="Username" required aria-label="Username">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" placeholder="Password" required aria-label="Password">
+                </div>
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Login
+                </button>
+            </form>
+            <div class="login-footer">
+                <p>Single User System</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="appScreen" class="screen">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="header-brand">
+                    <i class="fas fa-wallet"></i>
+                    <span id="businessName">Super Leather Craft</span>
+                </div>
+                <div class="header-actions">
+                    <span id="currentDate"></span>
+                    <button id="logoutBtn" class="btn-outline" aria-label="Logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="navbar" aria-label="Main navigation">
+            <div class="nav-content">
+                <button class="nav-btn active" data-page="dashboard" aria-label="Dashboard">
+                    <i class="fas fa-chart-bar"></i>
+                    Dashboard
+                </button>
+                <button class="nav-btn" data-page="sales" aria-label="Add Sale">
+                    <i class="fas fa-cash-register"></i>
+                    Add Sale
+                </button>
+                <button class="nav-btn" data-page="expenses" aria-label="Add Expense">
+                    <i class="fas fa-receipt"></i>
+                    Add Expense
+                </button>
+                <button class="nav-btn" data-page="ledger" aria-label="View Ledger">
+                    <i class="fas fa-book"></i>
+                    View Ledger
+                </button>
+                <button class="nav-btn" data-page="summary" aria-label="Daily Summary">
+                    <i class="fas fa-balance-scale"></i>
+                    Daily Summary
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Page -->
+            <div id="dashboardPage" class="page active">
+                <div class="page-header">
+                    <h2><i class="fas fa-chart-bar"></i> Dashboard</h2>
+                    <p>Today's overview and quick actions</p>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card revenue">
+                        <div class="stat-icon">
+                            <i class="fas fa-arrow-up"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="todaySales">0.00</h3>
+                            <p>Today's Sales</p>
+                        </div>
+                    </div>
+                    <div class="stat-card expense">
+                        <div class="stat-icon">
+                            <i class="fas fa-arrow-down"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="todayExpenses">0.00</h3>
+                            <p>Today's Expenses</p>
+                        </div>
+                    </div>
+                    <div class="stat-card balance">
+                        <div class="stat-icon">
+                            <i class="fas fa-scale-balanced"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="netBalance">0.00</h3>
+                            <p>Net Balance</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <h3>Quick Actions</h3>
+                    <div class="action-buttons">
+                        <button class="action-btn sales-btn" data-target="sales" aria-label="Record Sale">
+                            <i class="fas fa-plus-circle"></i>
+                            Record Sale
+                        </button>
+                        <button class="action-btn expense-btn" data-target="expenses" aria-label="Record Expense">
+                            <i class="fas fa-minus-circle"></i>
+                            Record Expense
+                        </button>
+                        <button class="action-btn ledger-btn" data-target="ledger" aria-label="View Transactions">
+                            <i class="fas fa-history"></i>
+                            View Transactions
+                        </button>
+                    </div>
+                </div>
+
+                <div class="recent-transactions">
+                    <h3>Recent Transactions</h3>
+                    <div id="recentTransactions" class="transactions-list">
+                        <!-- Recent transactions will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Sale Page -->
+            <div id="salesPage" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-cash-register"></i> Record Sale</h2>
+                    <p>Record daily cash sales (Credit to Cash Sales)</p>
+                </div>
+                
+                <form id="salesForm" class="transaction-form">
+                    <div class="form-group">
+                        <label for="saleDate">Date</label>
+                        <input type="date" id="saleDate" required aria-describedby="saleDateHelp">
+                        <small id="saleDateHelp" class="form-help">Select the date of the sale</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="saleAmount">Amount (PKR)</label>
+                        <input type="number" id="saleAmount" step="0.01" min="0" placeholder="0.00" required aria-describedby="saleAmountHelp">
+                        <small id="saleAmountHelp" class="form-help">Enter the total sale amount</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="saleDescription">Description</label>
+                        <textarea id="saleDescription" placeholder="Enter sale description (e.g., Wallet sale, Belt sale...)" rows="3" aria-describedby="saleDescHelp"></textarea>
+                        <small id="saleDescHelp" class="form-help">Describe what was sold (optional)</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="showPage('dashboard')" aria-label="Back to Dashboard">
+                            <i class="fas fa-arrow-left"></i>
+                            Back
+                        </button>
+                        <button type="submit" class="btn-primary" aria-label="Save Sale">
+                            <i class="fas fa-check"></i>
+                            Record Sale
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Add Expense Page -->
+            <div id="expensesPage" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-receipt"></i> Record Expense</h2>
+                    <p>Record daily expenses (Debit to Operating Expenses)</p>
+                </div>
+                
+                <form id="expenseForm" class="transaction-form">
+                    <div class="form-group">
+                        <label for="expenseDate">Date</label>
+                        <input type="date" id="expenseDate" required aria-describedby="expenseDateHelp">
+                        <small id="expenseDateHelp" class="form-help">Select the date of the expense</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="expenseAccount">Expense Type</label>
+                        <select id="expenseAccount" required aria-describedby="expenseAccountHelp">
+                            <option value="">Select expense type</option>
+                            <option value="Operating Expenses">Operating Expenses</option>
+                            <option value="Vendor Payments">Vendor Payments</option>
+                        </select>
+                        <small id="expenseAccountHelp" class="form-help">Choose the appropriate expense category</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="expenseAmount">Amount (PKR)</label>
+                        <input type="number" id="expenseAmount" step="0.01" min="0" placeholder="0.00" required aria-describedby="expenseAmountHelp">
+                        <small id="expenseAmountHelp" class="form-help">Enter the total expense amount</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="expenseDescription">Description</label>
+                        <textarea id="expenseDescription" placeholder="Enter expense description (e.g., Rent, Electricity, Raw materials...)" rows="3" aria-describedby="expenseDescHelp"></textarea>
+                        <small id="expenseDescHelp" class="form-help">Describe the expense purpose (optional)</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="showPage('dashboard')" aria-label="Back to Dashboard">
+                            <i class="fas fa-arrow-left"></i>
+                            Back
+                        </button>
+                        <button type="submit" class="btn-primary" aria-label="Save Expense">
+                            <i class="fas fa-check"></i>
+                            Record Expense
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Ledger Page -->
+            <div id="ledgerPage" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-book"></i> Transaction Ledger</h2>
+                    <p>View all sales and expenses with filtering</p>
+                </div>
+                
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="filterStartDate">From Date</label>
+                        <input type="date" id="filterStartDate" aria-describedby="startDateHelp">
+                        <small id="startDateHelp" class="form-help">Filter from this date</small>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterEndDate">To Date</label>
+                        <input type="date" id="filterEndDate" aria-describedby="endDateHelp">
+                        <small id="endDateHelp" class="form-help">Filter to this date</small>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterType">Type</label>
+                        <select id="filterType" aria-describedby="typeHelp">
+                            <option value="">All</option>
+                            <option value="credit">Sales</option>
+                            <option value="debit">Expenses</option>
+                        </select>
+                        <small id="typeHelp" class="form-help">Filter by transaction type</small>
+                    </div>
+                    <button id="applyFilters" class="btn-primary" aria-label="Apply Filters">
+                        <i class="fas fa-filter"></i>
+                        Apply
+                    </button>
+                    <button id="resetFilters" class="btn-secondary" aria-label="Reset Filters">
+                        <i class="fas fa-redo"></i>
+                        Reset
+                    </button>
+                    <button class="btn-primary print-ledger-btn" aria-label="Print Ledger Report">
+                        <i class="fas fa-print"></i>
+                        Print Ledger
+                    </button>
+                </div>
+                
+                <div class="ledger-summary">
+                    <div class="summary-item">
+                        <span>Total Sales:</span>
+                        <strong id="totalSalesAmount">0.00 PKR</strong>
+                    </div>
+                    <div class="summary-item">
+                        <span>Total Expenses:</span>
+                        <strong id="totalExpensesAmount">0.00 PKR</strong>
+                    </div>
+                    <div class="summary-item net">
+                        <span>Net Amount:</span>
+                        <strong id="netAmount">0.00 PKR</strong>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table id="ledgerTable" class="data-table" aria-label="Transaction Ledger">
+                        <thead>
+                            <tr>
+                                <th scope="col">TID</th>
+                                <th scope="col">Date</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Account</th>
+                                <th scope="col">Description</th>
+                                <th scope="col">Amount (PKR)</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledgerTableBody">
+                            <!-- Transactions will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Daily Summary Page -->
+            <div id="summaryPage" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-balance-scale"></i> Daily Cash Summary</h2>
+                    <p>Compare recorded cash with physical cash count</p>
+                </div>
+                
+                <form id="summaryForm" class="transaction-form">
+                    <div class="form-group">
+                        <label for="summaryDate">Date</label>
+                        <input type="date" id="summaryDate" required aria-describedby="summaryDateHelp">
+                        <small id="summaryDateHelp" class="form-help">Select the date for cash summary</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="physicalCash">Physical Cash Count (PKR)</label>
+                        <input type="number" id="physicalCash" step="0.01" placeholder="0.00" required aria-describedby="physicalCashHelp">
+                        <small id="physicalCashHelp" class="form-help">Enter the actual cash count from register</small>
+                    </div>
+                    
+                    <div class="summary-preview">
+                        <div class="preview-item">
+                            <span>Total Sales:</span>
+                            <span id="previewSales">0.00</span>
+                        </div>
+                        <div class="preview-item">
+                            <span>Total Expenses:</span>
+                            <span id="previewExpenses">0.00</span>
+                        </div>
+                        <div class="preview-item expected">
+                            <span>Expected Cash:</span>
+                            <span id="previewExpected">0.00</span>
+                        </div>
+                        <div class="preview-item difference">
+                            <span>Difference:</span>
+                            <span id="previewDifference">0.00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="summaryNotes">Notes</label>
+                        <textarea id="summaryNotes" placeholder="Any notes about the cash count..." rows="3" aria-describedby="summaryNotesHelp"></textarea>
+                        <small id="summaryNotesHelp" class="form-help">Add any observations about cash discrepancy</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="showPage('dashboard')" aria-label="Back to Dashboard">
+                            <i class="fas fa-arrow-left"></i>
+                            Back
+                        </button>
+                        <button type="button" class="btn-primary print-summary-btn" aria-label="Print Daily Summary">
+                            <i class="fas fa-print"></i>
+                            Print Summary
+                        </button>
+                        <button type="submit" class="btn-primary" aria-label="Save Daily Summary">
+                            <i class="fas fa-save"></i>
+                            Save Summary
+                        </button>
+                    </div>
+                </form>
+                
+                <div class="summaries-list">
+                    <h3>Previous Summaries</h3>
+                    <div id="previousSummaries" class="summary-cards">
+                        <!-- Previous summaries will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification System -->
+    <div id="notification" class="notification hidden" aria-live="polite" aria-atomic="true">
+        <span id="notificationMessage"></span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

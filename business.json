@@ -1,0 +1,13 @@
+{
+    "business": {
+        "name": "Super Leather Craft",
+        "currency": "PKR",
+        "address": "Zainab market, Abdullah Haroon Road, Saddar , Karachi Shop No 34, Ground Floor, Karachi, 75509",
+        "phone": "0344 3057471",
+        "fiscalYear": "2025"
+    },
+    "accounts": {
+        "defaultRevenue": "Cash Sales",
+        "defaultExpenses": ["Operating Expenses", "Vendor Payments"]
+    }
+}
