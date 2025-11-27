@@ -39,7 +39,10 @@ app.use(helmet()); // ← ADD THIS - Adds security headers
 
 // CORS configuration - only allow your frontend
 app.use(cors({
-    origin: 'http://localhost:5000', // Your frontend URL
+    origin: [
+        'http://localhost:5000',
+        'https://super-leather-craft.vercel.app'
+    ],
     credentials: true
 }));
 
@@ -458,3 +461,4 @@ app.listen(PORT, () => {
     console.log(`🛡️  Security headers enabled with Helmet`);
 
 });
+
