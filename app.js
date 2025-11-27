@@ -268,7 +268,7 @@ class LeatherShopAccounting {
         }
 
         try {
-            const response = await fetch(`http://localhost:5000${endpoint}`, options);
+            const API_BASE_URL = 'https://super-leather-craft-backend.onrender.com'; const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
             if (response.status === 401) {
                 this.handleLogout();
                 throw new Error('Unauthorized');
@@ -1043,4 +1043,5 @@ window.showPage = function (page) {
 
 // Initialize the application
 const app = new LeatherShopAccounting();
+
 
