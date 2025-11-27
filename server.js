@@ -45,7 +45,10 @@ app.use(cors({
 
 // Other middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Only serve frontend in development
+if (process.env.NODE_ENV !== 'production') {
+    app.use(express.static(path.join(__dirname, '../frontend')));
+}
 
 // Simple base64 encoding function (since btoa is not available in Node.js)
 const btoa = (str) => Buffer.from(str).toString('base64');
@@ -77,9 +80,17 @@ const authenticate = (req, res, next) => {
     }
 };
 
-// Serve frontend
+// Serve frontend only in development
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+    if (process.env.NODE_ENV !== 'production') {
+        res.sendFile(path.join(__dirname, '../frontend/index.html'));
+    } else {
+        res.json({ 
+            message: 'Super Leather Craft Backend API', 
+            status: 'running',
+            docs: 'Frontend is hosted separately on Vercel'
+        });
+    }
 });
 
 // Routes
@@ -445,4 +456,5 @@ app.listen(PORT, () => {
     console.log(`🔒 JWT Authentication enabled`);
     console.log(`⏰ Token expiration: ${JWT_EXPIRES_IN}`);
     console.log(`🛡️  Security headers enabled with Helmet`);
+
 });
