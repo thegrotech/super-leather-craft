@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const db = require('./database');
+const db = require('./database-postgres'); 
 const businessConfig = require('./business.json');
 const helmet = require('helmet');
 require('dotenv').config();
@@ -461,4 +461,5 @@ app.listen(PORT, () => {
     console.log(`🛡️  Security headers enabled with Helmet`);
 
 });
+
 
