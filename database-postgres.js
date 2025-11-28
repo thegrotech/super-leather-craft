@@ -1,10 +1,29 @@
 const { Pool } = require('pg');
 
+console.log('🔍 DEBUG: Creating PostgreSQL pool...');
+console.log('🔍 DEBUG: DATABASE_URL length:', process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 'MISSING');
+
 // Create PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
+
+// Test connection immediately
+console.log('🔍 DEBUG: Testing PostgreSQL connection...');
+pool.connect()
+  .then((client) => {
+    console.log('✅ PostgreSQL connection test successful');
+    client.release();
+  })
+  .catch((error) => {
+    console.error('❌ PostgreSQL connection failed:', error.message);
+    console.error('🔍 Connection details:', {
+      hasDatabaseUrl: !!process.env.DATABASE_URL,
+      urlLength: process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0,
+      nodeEnv: process.env.NODE_ENV
+    });
+  });
 
 // Initialize database tables
 const initializeDatabase = async () => {
@@ -169,3 +188,4 @@ pool.on('error', (err) => {
 });
 
 module.exports = db;
+
