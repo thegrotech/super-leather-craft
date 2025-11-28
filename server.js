@@ -7,6 +7,17 @@ const helmet = require('helmet');
 // LOAD ENVIRONMENT VARIABLES FIRST!
 require('dotenv').config();
 
+// ADD THESE DEBUG LINES:
+console.log('🔍 VERIFY DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'MISSING');
+if (process.env.DATABASE_URL) {
+  console.log('🔍 DATABASE_URL contains pooler:', process.env.DATABASE_URL.includes('pooler'));
+  console.log('🔍 DATABASE_URL port:', process.env.DATABASE_URL.includes(':6543') ? '6543 ✅' : 'WRONG PORT ❌');
+  console.log('🔍 DATABASE_URL first 50 chars:', process.env.DATABASE_URL.substring(0, 50) + '...');
+}
+
+// STRICT PostgreSQL Check - No Fallback!
+console.log('🔍 Checking database configuration...');
+
 // STRICT PostgreSQL Check - No Fallback!
 console.log('🔍 Checking database configuration...');
 
@@ -474,6 +485,7 @@ app.listen(PORT, () => {
     console.log(`🛡️  Security headers enabled with Helmet`);
 
 });
+
 
 
 
