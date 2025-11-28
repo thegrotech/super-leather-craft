@@ -1,10 +1,24 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const db = require('./database-postgres'); 
 const businessConfig = require('./business.json');
 const helmet = require('helmet');
+
+// LOAD ENVIRONMENT VARIABLES FIRST!
 require('dotenv').config();
+
+// STRICT PostgreSQL Check - No Fallback!
+console.log('🔍 Checking database configuration...');
+
+if (!process.env.DATABASE_URL) {
+  console.error('❌ CRITICAL ERROR: DATABASE_URL environment variable is missing!');
+  console.error('💡 Solution: Add DATABASE_URL to Render environment variables');
+  console.error('📋 Get the connection string from Supabase: Settings > Database');
+  process.exit(1); // Stop the server completely
+}
+
+console.log('✅ DATABASE_URL found, loading PostgreSQL...');
+const db = require('./database-postgres');
 
 // JWT authentication packages (now installed)
 const bcrypt = require('bcryptjs');
@@ -29,7 +43,6 @@ bcrypt.hash(ADMIN_PASSWORD, 10, (err, hash) => {
     ADMIN_PASSWORD_HASH = hash;
     console.log('✅ Admin password hashed successfully');
 });
-
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -461,5 +474,6 @@ app.listen(PORT, () => {
     console.log(`🛡️  Security headers enabled with Helmet`);
 
 });
+
 
 
