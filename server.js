@@ -297,7 +297,6 @@ app.post('/api/transactions', authenticate, async (req, res) => {
       RETURNING id, created_at, transaction_time
     `;
     const reference = `REF-${Date.now()}`;
-    const pakistanTimestamp = getPakistanTimestamp();
     const pakistanTime = getPakistanTime();
     
     const result = await db.pool.query(insertQuery, [
@@ -786,4 +785,5 @@ app.listen(PORT, () => {
   console.log(`🌐 CORS configured for production`);
   console.log(`⏰ Server time: ${getPakistanTimestamp()}`);
 });
+
 
