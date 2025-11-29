@@ -46,6 +46,37 @@ let ADMIN_PASSWORD_HASH = '';
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// ==================== UTILITY FUNCTIONS ====================
+
+// Get Pakistan time for timestamps
+function getPakistanTimestamp() {
+  return new Date().toLocaleString("en-US", { 
+    timeZone: "Asia/Karachi",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).replace(/(\d+)\/(\d+)\/(\d+),?/, '$3-$1-$2');
+}
+
+// Format timestamp for display
+function formatTimestampForDisplay(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return date.toLocaleString('en-PK', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+}
+
 // ==================== MIDDLEWARE ====================
 
 // Security headers
@@ -87,8 +118,6 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'production') {
   app.use(express.static(path.join(__dirname, '../frontend')));
 }
-
-// ==================== UTILITY FUNCTIONS ====================
 
 // JWT Authentication middleware
 const authenticate = async (req, res, next) => {
@@ -136,7 +165,8 @@ app.get('/api/health', async (req, res) => {
     res.json({ 
       status: 'healthy', 
       database: 'connected',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      pakistan_time: getPakistanTimestamp()
     });
   } catch (error) {
     res.status(503).json({ 
@@ -157,7 +187,8 @@ app.get('/', (req, res) => {
       status: 'running',
       environment: process.env.NODE_ENV,
       frontend: 'https://super-leather-craft.vercel.app',
-      docs: 'API endpoints are available under /api/*'
+      docs: 'API endpoints are available under /api/*',
+      server_time: getPakistanTimestamp()
     });
   }
 });
@@ -204,7 +235,8 @@ app.post('/api/login', async (req, res) => {
     res.json({
       success: true,
       token,
-      business: businessConfig.business
+      business: businessConfig.business,
+      login_time: getPakistanTimestamp()
     });
 
   } catch (error) {
@@ -218,7 +250,7 @@ app.get('/api/business', authenticate, (req, res) => {
   res.json(businessConfig.business);
 });
 
-// Add transaction (sale or expense)
+// Add transaction (sale or expense) with enhanced timestamp tracking
 app.post('/api/transactions', authenticate, async (req, res) => {
   try {
     const { date, account_name, description, amount, type } = req.body;
@@ -232,6 +264,9 @@ app.post('/api/transactions', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Type must be either "credit" or "debit"' });
     }
 
+    // Get Pakistan timestamp
+    const pakistanTimestamp = getPakistanTimestamp();
+    
     // Get next TID
     const tid = await new Promise((resolve, reject) => {
       db.getNextTID((err, tid) => {
@@ -240,16 +275,35 @@ app.post('/api/transactions', authenticate, async (req, res) => {
       });
     });
 
-    // Insert transaction with RETURNING clause for PostgreSQL
+    // Insert transaction with comprehensive timestamp tracking
     const insertQuery = `
-      INSERT INTO transactions (tid, date, account_name, description, amount, type, reference) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7) 
-      RETURNING id
+      INSERT INTO transactions (
+        tid, date, account_name, description, amount, type, reference,
+        created_at, transaction_time, created_by
+      ) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      RETURNING id, created_at, transaction_time
     `;
     const reference = `REF-${Date.now()}`;
     
-    const result = await db.pool.query(insertQuery, [tid, date, account_name, description, amount, type, reference]);
+    const result = await db.pool.query(insertQuery, [
+      tid, date, account_name, description, amount, type, reference,
+      pakistanTimestamp, pakistanTimestamp.split(' ')[1], req.user.username
+    ]);
+    
     const transactionId = result.rows[0].id;
+    const createdAt = result.rows[0].created_at;
+    const transactionTime = result.rows[0].transaction_time;
+
+    // Log audit trail
+    await db.logAudit(
+      'transactions',
+      transactionId,
+      'INSERT',
+      null,
+      { date, account_name, description, amount, type, tid, reference },
+      req.user.username
+    );
 
     // Update account balance
     const balanceChange = type === 'credit' ? amount : -amount;
@@ -262,6 +316,9 @@ app.post('/api/transactions', authenticate, async (req, res) => {
       success: true, 
       id: transactionId,
       tid: tid,
+      created_at: createdAt,
+      transaction_time: transactionTime,
+      formatted_timestamp: formatTimestampForDisplay(createdAt),
       message: 'Transaction recorded successfully'
     });
 
@@ -271,12 +328,23 @@ app.post('/api/transactions', authenticate, async (req, res) => {
   }
 });
 
-// Get all transactions with filtering
+// Get all transactions with enhanced timestamp data
 app.get('/api/transactions', authenticate, async (req, res) => {
   try {
     const { start_date, end_date, account_name, type, limit } = req.query;
     
-    let query = `SELECT *, COALESCE(tid, id) as display_id FROM transactions WHERE 1=1`;
+    let query = `
+      SELECT *, 
+             COALESCE(tid, id) as display_id,
+             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at_full,
+             TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI:SS') as updated_at_full,
+             TO_CHAR(transaction_time, 'HH24:MI:SS') as transaction_time_str,
+             CASE 
+               WHEN created_at = updated_at THEN 'Created: ' || TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI')
+               ELSE 'Updated: ' || TO_CHAR(updated_at, 'DD Mon YYYY, HH24:MI')
+             END as timestamp_info
+      FROM transactions WHERE 1=1
+    `;
     const params = [];
     let paramCount = 0;
 
@@ -366,7 +434,8 @@ app.get('/api/dashboard', authenticate, async (req, res) => {
       today_expenses: parseFloat(todayData.today_expenses),
       net_balance: parseFloat(netBalance),
       total_revenue: parseFloat(balanceData.total_revenue),
-      total_expenses: parseFloat(balanceData.total_expenses)
+      total_expenses: parseFloat(balanceData.total_expenses),
+      server_time: getPakistanTimestamp()
     });
 
   } catch (error) {
@@ -401,10 +470,12 @@ app.post('/api/daily-summary', authenticate, async (req, res) => {
     const expected_cash = total_sales - total_expenses;
     const difference = physical_cash - expected_cash;
 
+    const pakistanTimestamp = getPakistanTimestamp();
+
     const upsertQuery = `
       INSERT INTO daily_summaries 
-      (date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      (date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (date) 
       DO UPDATE SET 
         total_sales = EXCLUDED.total_sales,
@@ -412,15 +483,22 @@ app.post('/api/daily-summary', authenticate, async (req, res) => {
         expected_cash = EXCLUDED.expected_cash,
         physical_cash = EXCLUDED.physical_cash,
         difference = EXCLUDED.difference,
-        notes = EXCLUDED.notes
-      RETURNING id
+        notes = EXCLUDED.notes,
+        updated_at = EXCLUDED.updated_at
+      RETURNING id, created_at, updated_at
     `;
 
     const upsertResult = await db.pool.query(upsertQuery, [
-      date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes
+      date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes, pakistanTimestamp
     ]);
 
-    res.json({ success: true, id: upsertResult.rows[0].id });
+    res.json({ 
+      success: true, 
+      id: upsertResult.rows[0].id,
+      created_at: upsertResult.rows[0].created_at,
+      updated_at: upsertResult.rows[0].updated_at,
+      message: 'Daily summary saved successfully'
+    });
 
   } catch (error) {
     console.error('❌ Daily summary error:', error);
@@ -433,7 +511,12 @@ app.get('/api/daily-summaries', authenticate, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     
-    let query = `SELECT * FROM daily_summaries WHERE 1=1`;
+    let query = `
+      SELECT *, 
+             TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI') as created_at_display,
+             TO_CHAR(updated_at, 'DD Mon YYYY, HH24:MI') as updated_at_display
+      FROM daily_summaries WHERE 1=1
+    `;
     const params = [];
     let paramCount = 0;
 
@@ -459,7 +542,7 @@ app.get('/api/daily-summaries', authenticate, async (req, res) => {
   }
 });
 
-// Update transaction
+// Update transaction with comprehensive audit tracking
 app.put('/api/transactions/:id', authenticate, async (req, res) => {
   try {
     const transactionId = req.params.id;
@@ -473,6 +556,9 @@ app.put('/api/transactions/:id', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Type must be either "credit" or "debit"' });
     }
 
+    // Get Pakistan timestamp for update
+    const pakistanTimestamp = getPakistanTimestamp();
+
     // Get old transaction first
     const oldResult = await db.pool.query('SELECT * FROM transactions WHERE id = $1', [transactionId]);
     if (oldResult.rows.length === 0) {
@@ -481,14 +567,41 @@ app.put('/api/transactions/:id', authenticate, async (req, res) => {
 
     const oldTransaction = oldResult.rows[0];
 
-    // Update transaction
+    // Update transaction with timestamp and version increment
     const updateQuery = `
       UPDATE transactions 
-      SET date = $1, account_name = $2, description = $3, amount = $4, type = $5
-      WHERE id = $6
+      SET date = $1, account_name = $2, description = $3, amount = $4, type = $5, 
+          updated_at = $6, version = version + 1, updated_by = $7
+      WHERE id = $8
+      RETURNING updated_at, version
     `;
     
-    await db.pool.query(updateQuery, [date, account_name, description, amount, type, transactionId]);
+    const updateResult = await db.pool.query(updateQuery, [
+      date, account_name, description, amount, type, 
+      pakistanTimestamp, req.user.username, transactionId
+    ]);
+
+    // Log audit trail
+    await db.logAudit(
+      'transactions',
+      transactionId,
+      'UPDATE',
+      {
+        date: oldTransaction.date,
+        account_name: oldTransaction.account_name,
+        description: oldTransaction.description,
+        amount: oldTransaction.amount,
+        type: oldTransaction.type
+      },
+      {
+        date,
+        account_name,
+        description,
+        amount,
+        type
+      },
+      req.user.username
+    );
 
     // Revert old balance change
     const oldBalanceChange = oldTransaction.type === 'credit' ? -oldTransaction.amount : oldTransaction.amount;
@@ -506,7 +619,10 @@ app.put('/api/transactions/:id', authenticate, async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: 'Transaction updated successfully'
+      message: 'Transaction updated successfully',
+      updated_at: updateResult.rows[0].updated_at,
+      version: updateResult.rows[0].version,
+      formatted_timestamp: formatTimestampForDisplay(updateResult.rows[0].updated_at)
     });
 
   } catch (error) {
@@ -515,7 +631,7 @@ app.put('/api/transactions/:id', authenticate, async (req, res) => {
   }
 });
 
-// Delete transaction
+// Delete transaction with audit logging
 app.delete('/api/transactions/:id', authenticate, async (req, res) => {
   try {
     const transactionId = req.params.id;
@@ -527,6 +643,23 @@ app.delete('/api/transactions/:id', authenticate, async (req, res) => {
     }
 
     const transaction = result.rows[0];
+
+    // Log audit trail before deletion
+    await db.logAudit(
+      'transactions',
+      transactionId,
+      'DELETE',
+      {
+        date: transaction.date,
+        account_name: transaction.account_name,
+        description: transaction.description,
+        amount: transaction.amount,
+        type: transaction.type,
+        tid: transaction.tid
+      },
+      null,
+      req.user.username
+    );
 
     // Delete transaction
     await db.pool.query('DELETE FROM transactions WHERE id = $1', [transactionId]);
@@ -540,7 +673,8 @@ app.delete('/api/transactions/:id', authenticate, async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: 'Transaction deleted successfully'
+      message: 'Transaction deleted successfully',
+      deleted_at: getPakistanTimestamp()
     });
 
   } catch (error) {
@@ -549,13 +683,18 @@ app.delete('/api/transactions/:id', authenticate, async (req, res) => {
   }
 });
 
-// Get single transaction
+// Get single transaction with full audit history
 app.get('/api/transactions/:id', authenticate, async (req, res) => {
   try {
     const transactionId = req.params.id;
     
     const result = await db.pool.query(
-      'SELECT *, COALESCE(tid, id) as display_id FROM transactions WHERE id = $1', 
+      `SELECT *, 
+              COALESCE(tid, id) as display_id,
+              TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI:SS') as created_at_display,
+              TO_CHAR(updated_at, 'DD Mon YYYY, HH24:MI:SS') as updated_at_display,
+              TO_CHAR(transaction_time, 'HH24:MI:SS') as transaction_time_display
+       FROM transactions WHERE id = $1`, 
       [transactionId]
     );
     
@@ -571,6 +710,28 @@ app.get('/api/transactions/:id', authenticate, async (req, res) => {
   }
 });
 
+// Get transaction audit history
+app.get('/api/transactions/:id/audit', authenticate, async (req, res) => {
+  try {
+    const transactionId = req.params.id;
+    
+    const auditResult = await db.pool.query(
+      `SELECT action, changed_by, changed_at, old_values, new_values,
+              TO_CHAR(changed_at, 'DD Mon YYYY, HH24:MI:SS') as changed_at_display
+       FROM audit_log 
+       WHERE table_name = 'transactions' AND record_id = $1
+       ORDER BY changed_at DESC`,
+      [transactionId]
+    );
+    
+    res.json(auditResult.rows);
+
+  } catch (error) {
+    console.error('❌ Get transaction audit error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== ERROR HANDLING ====================
 
 // 404 handler
@@ -581,7 +742,10 @@ app.use('*', (req, res) => {
 // Global error handler
 app.use((error, req, res, next) => {
   console.error('🚨 Global Error Handler:', error);
-  res.status(500).json({ error: 'Internal Server Error' });
+  res.status(500).json({ 
+    error: 'Internal Server Error',
+    timestamp: getPakistanTimestamp()
+  });
 });
 
 // ==================== SERVER STARTUP ====================
@@ -606,4 +770,5 @@ app.listen(PORT, () => {
   console.log(`⏰ Token expiration: ${JWT_EXPIRES_IN}`);
   console.log(`🛡️ Security headers enabled with Helmet`);
   console.log(`🌐 CORS configured for production`);
+  console.log(`⏰ Server time: ${getPakistanTimestamp()}`);
 });
