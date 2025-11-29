@@ -387,12 +387,17 @@ class LeatherShopAccounting {
     }
 
     updateDashboardStats(data) {
+        // Handle both old and new field names for compatibility
+        const todaySales = data.today_sales || 0;
+        const todayExpenses = data.today_expenses || 0;
+        const netBalance = data.net_balance || 0;
+    
         document.getElementById('todaySales').textContent = 
-            this.formatCurrency(data.today_sales);
+            this.formatCurrency(todaySales);
         document.getElementById('todayExpenses').textContent = 
-            this.formatCurrency(data.today_expenses);
+            this.formatCurrency(todayExpenses);
         document.getElementById('netBalance').textContent = 
-            this.formatCurrency(data.net_balance);
+            this.formatCurrency(netBalance);
     }
 
     updateRecentTransactions(transactions) {
@@ -455,13 +460,15 @@ class LeatherShopAccounting {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;"><em>No transactions found</em></td></tr>';
             return;
         }
-
+    
         tbody.innerHTML = transactions.map(transaction => `
             <tr>
                 <td>${transaction.display_id}</td>
                 <td>
                     <div>${this.formatDate(transaction.date)}</div>
-                    ${transaction.timestamp_info ? `<small class="timestamp">${transaction.timestamp_info}</small>` : ''}
+                    <small class="timestamp">Created: ${transaction.created_at_display || this.formatDateTime(transaction.created_at)}</small>
+                    ${transaction.updated_at_display && transaction.updated_at_display !== transaction.created_at_display ? 
+                        `<small class="timestamp updated">Updated: ${transaction.updated_at_display}</small>` : ''}
                     ${transaction.transaction_time_str ? `<small class="timestamp time">Time: ${transaction.transaction_time_str}</small>` : ''}
                 </td>
                 <td>
@@ -493,20 +500,27 @@ class LeatherShopAccounting {
 
     calculateLedgerSummary(transactions) {
         const summary = transactions.reduce((acc, transaction) => {
+            // FIXED: Ensure amount is parsed as a number
+            const amount = parseFloat(transaction.amount) || 0;
             if (transaction.type === 'credit') {
-                acc.sales += transaction.amount;
+                acc.sales += amount;
             } else {
-                acc.expenses += transaction.amount;
+                acc.expenses += amount;
             }
             return acc;
         }, { sales: 0, expenses: 0 });
-
+    
+        // FIXED: Ensure we're working with valid numbers
+        const totalSales = Number(summary.sales) || 0;
+        const totalExpenses = Number(summary.expenses) || 0;
+        const netAmount = totalSales - totalExpenses;
+    
         document.getElementById('totalSalesAmount').textContent = 
-            this.formatCurrency(summary.sales);
+            this.formatCurrency(totalSales);
         document.getElementById('totalExpensesAmount').textContent = 
-            this.formatCurrency(summary.expenses);
+            this.formatCurrency(totalExpenses);
         document.getElementById('netAmount').textContent = 
-            this.formatCurrency(summary.sales - summary.expenses);
+            this.formatCurrency(netAmount);
     }
 
     resetFilters() {
@@ -585,10 +599,12 @@ class LeatherShopAccounting {
             const currentTime = this.formatTime(new Date());
             
             const summary = transactions.reduce((acc, transaction) => {
+                // FIXED: Ensure amount is parsed as a number
+                const amount = parseFloat(transaction.amount) || 0;
                 if (transaction.type === 'credit') {
-                    acc.sales += transaction.amount;
+                    acc.sales += amount;
                 } else {
-                    acc.expenses += transaction.amount;
+                    acc.expenses += amount;
                 }
                 return acc;
             }, { sales: 0, expenses: 0 });
@@ -710,10 +726,12 @@ class LeatherShopAccounting {
             const transactions = await this.apiCall(`/api/transactions?start_date=${date}&end_date=${date}`);
             
             const summary = transactions.reduce((acc, transaction) => {
+                // FIXED: Ensure amount is parsed as a number
+                const amount = parseFloat(transaction.amount) || 0;
                 if (transaction.type === 'credit') {
-                    acc.sales += transaction.amount;
+                    acc.sales += amount;
                 } else {
-                    acc.expenses += transaction.amount;
+                    acc.expenses += amount;
                 }
                 return acc;
             }, { sales: 0, expenses: 0 });
@@ -1019,3 +1037,4 @@ window.showPage = function (page) {
 
 // Initialize the application
 const app = new LeatherShopAccounting();
+
