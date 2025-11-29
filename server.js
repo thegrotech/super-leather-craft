@@ -48,9 +48,10 @@ const PORT = process.env.PORT || 10000;
 
 // ==================== UTILITY FUNCTIONS ====================
 
-// Get Pakistan time for timestamps
+// Get Pakistan time for timestamps (12-hour format)
 function getPakistanTimestamp() {
-  return new Date().toLocaleString("en-US", { 
+  const now = new Date();
+  return now.toLocaleString("en-PK", { 
     timeZone: "Asia/Karachi",
     year: 'numeric',
     month: '2-digit',
@@ -58,21 +59,32 @@ function getPakistanTimestamp() {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
-  }).replace(/(\d+)\/(\d+)\/(\d+),?/, '$3-$1-$2');
+    hour12: true
+  });
 }
 
-// Format timestamp for display
+// Get only time part for transaction_time (12-hour format)
+function getPakistanTime() {
+  return new Date().toLocaleTimeString("en-PK", { 
+    timeZone: "Asia/Karachi",
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+}
+
+// Format timestamp for display (12-hour Karachi time)
 function formatTimestampForDisplay(timestamp) {
   if (!timestamp) return '';
   const date = new Date(timestamp);
   return date.toLocaleString('en-PK', {
+    timeZone: 'Asia/Karachi',
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: true
   });
 }
@@ -279,16 +291,18 @@ app.post('/api/transactions', authenticate, async (req, res) => {
     const insertQuery = `
       INSERT INTO transactions (
         tid, date, account_name, description, amount, type, reference,
-        created_at, transaction_time, created_by
+        created_at, updated_at, transaction_time, created_by
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
       RETURNING id, created_at, transaction_time
     `;
     const reference = `REF-${Date.now()}`;
+    const pakistanTimestamp = getPakistanTimestamp();
+    const pakistanTime = getPakistanTime();
     
     const result = await db.pool.query(insertQuery, [
       tid, date, account_name, description, amount, type, reference,
-      pakistanTimestamp, pakistanTimestamp.split(' ')[1], req.user.username
+      pakistanTimestamp, pakistanTimestamp, pakistanTime, req.user.username
     ]);
     
     const transactionId = result.rows[0].id;
@@ -336,12 +350,12 @@ app.get('/api/transactions', authenticate, async (req, res) => {
     let query = `
       SELECT *, 
              COALESCE(tid, id) as display_id,
-             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at_full,
-             TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI:SS') as updated_at_full,
-             TO_CHAR(transaction_time, 'HH24:MI:SS') as transaction_time_str,
+             TO_CHAR(created_at, 'DD Mon YYYY, HH12:MI AM') as created_at_display,
+             TO_CHAR(updated_at, 'DD Mon YYYY, HH12:MI AM') as updated_at_display,
+             TO_CHAR(transaction_time, 'HH12:MI:SS AM') as transaction_time_str,
              CASE 
-               WHEN created_at = updated_at THEN 'Created: ' || TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI')
-               ELSE 'Updated: ' || TO_CHAR(updated_at, 'DD Mon YYYY, HH24:MI')
+               WHEN created_at = updated_at THEN 'Created: ' || TO_CHAR(created_at, 'DD Mon YYYY, HH12:MI AM')
+               ELSE 'Updated: ' || TO_CHAR(updated_at, 'DD Mon YYYY, HH12:MI AM')
              END as timestamp_info
       FROM transactions WHERE 1=1
     `;
@@ -397,7 +411,7 @@ app.get('/api/accounts', authenticate, async (req, res) => {
   }
 });
 
-// Get dashboard summary
+// Get dashboard summary - FIXED CALCULATION
 app.get('/api/dashboard', authenticate, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
@@ -411,30 +425,31 @@ app.get('/api/dashboard', authenticate, async (req, res) => {
       WHERE date = $1
     `;
 
-    // Current balances
-    const balanceQuery = `
+    // FIXED: Calculate total sales and expenses from ALL transactions
+    const totalQuery = `
       SELECT 
-        COALESCE(SUM(CASE WHEN type = 'revenue' THEN balance ELSE 0 END), 0) as total_revenue,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN balance ELSE 0 END), 0) as total_expenses
-      FROM accounts
+        COALESCE(SUM(CASE WHEN type = 'credit' THEN amount ELSE 0 END), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END), 0) as total_expenses
+      FROM transactions
     `;
 
-    const [todayResult, balanceResult] = await Promise.all([
+    const [todayResult, totalResult] = await Promise.all([
       db.pool.query(todayQuery, [today]),
-      db.pool.query(balanceQuery)
+      db.pool.query(totalQuery)
     ]);
 
     const todayData = todayResult.rows[0];
-    const balanceData = balanceResult.rows[0];
+    const totalData = totalResult.rows[0];
     
-    const netBalance = balanceData.total_revenue - balanceData.total_expenses;
+    // FIXED: Net balance = Total Sales - Total Expenses
+    const netBalance = totalData.total_sales - totalData.total_expenses;
     
     res.json({
       today_sales: parseFloat(todayData.today_sales),
       today_expenses: parseFloat(todayData.today_expenses),
       net_balance: parseFloat(netBalance),
-      total_revenue: parseFloat(balanceData.total_revenue),
-      total_expenses: parseFloat(balanceData.total_expenses),
+      total_sales: parseFloat(totalData.total_sales), // Renamed for clarity
+      total_expenses: parseFloat(totalData.total_expenses), // Renamed for clarity
       server_time: getPakistanTimestamp()
     });
 
@@ -443,7 +458,6 @@ app.get('/api/dashboard', authenticate, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 // Save daily cash summary
 app.post('/api/daily-summary', authenticate, async (req, res) => {
   try {
@@ -772,3 +786,4 @@ app.listen(PORT, () => {
   console.log(`🌐 CORS configured for production`);
   console.log(`⏰ Server time: ${getPakistanTimestamp()}`);
 });
+
