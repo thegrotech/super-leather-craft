@@ -24,6 +24,7 @@ class LeatherShopAccounting {
         this.attachEventListeners();
         this.checkAuth();
         this.setupInactivityTimer();
+        this.displayCurrentTime(); // Initialize current time display
     }
 
     setCurrentDate() {
@@ -44,6 +45,27 @@ class LeatherShopAccounting {
         document.getElementById('summaryDate').value = today;
         document.getElementById('filterStartDate').value = today;
         document.getElementById('filterEndDate').value = today;
+    }
+
+    // NEW: Display current Pakistan time
+    displayCurrentTime() {
+        const updateTime = () => {
+            const now = new Date();
+            const pakistanTime = now.toLocaleString('en-PK', {
+                timeZone: 'Asia/Karachi',
+                hour12: true,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            const timeElement = document.getElementById('currentTime');
+            if (timeElement) {
+                timeElement.textContent = `Pakistan Time: ${pakistanTime}`;
+            }
+        };
+        
+        updateTime();
+        setInterval(updateTime, 1000);
     }
 
     attachEventListeners() {
@@ -147,7 +169,7 @@ class LeatherShopAccounting {
                 localStorage.setItem('businessInfo', JSON.stringify(this.businessInfo));
                 
                 this.showApp();
-                this.showNotification('Login successful!', 'success');
+                this.showNotification(`Login successful at ${this.formatTime(new Date())}!`, 'success');
                 this.resetInactivityTimer();
             } else {
                 this.showNotification('Invalid credentials!', 'error');
@@ -164,7 +186,7 @@ class LeatherShopAccounting {
         localStorage.removeItem('businessInfo');
         this.showLogin();
         this.clearInactivityTimer();
-        this.showNotification('Logged out successfully!', 'success');
+        this.showNotification(`Logged out at ${this.formatTime(new Date())}!`, 'success');
     }
 
     checkAuth() {
@@ -200,7 +222,7 @@ class LeatherShopAccounting {
 
     handleAutoLogout() {
         if (this.token) {
-            this.showNotification('Session expired due to inactivity. Please login again.', 'warning');
+            this.showNotification(`Session expired due to inactivity at ${this.formatTime(new Date())}. Please login again.`, 'warning');
             this.handleLogout();
         }
     }
@@ -252,39 +274,39 @@ class LeatherShopAccounting {
 
     // API Methods
     async apiCall(endpoint, method = 'GET', data = null) {
-    const API_BASE_URL = 'https://super-leather-craft-backend.onrender.com';
-    
-    const options = {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    };
+        const API_BASE_URL = 'https://super-leather-craft-backend.onrender.com';
+        
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        };
 
-    if (this.token) {
-        options.headers.Authorization = `Bearer ${this.token}`;
+        if (this.token) {
+            options.headers.Authorization = `Bearer ${this.token}`;
+        }
+
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+            if (response.status === 401) {
+                this.handleLogout();
+                throw new Error('Unauthorized');
+            }
+            return await response.json();
+        } catch (error) {
+            if (error.message === 'Unauthorized') {
+                this.showNotification('Session expired. Please login again.', 'error');
+            }
+            throw error;
+        }
     }
 
-    if (data) {
-        options.body = JSON.stringify(data);
-    }
-
-    try {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-        if (response.status === 401) {
-            this.handleLogout();
-            throw new Error('Unauthorized');
-        }
-        return await response.json();
-    } catch (error) {
-        if (error.message === 'Unauthorized') {
-            this.showNotification('Session expired. Please login again.', 'error');
-        }
-        throw error;
-    }
-}
-
-    // Transaction Methods
+    // Transaction Methods - UPDATED WITH TIMESTAMP SUPPORT
     async handleSaleSubmit() {
         const formData = {
             date: document.getElementById('saleDate').value,
@@ -300,13 +322,14 @@ class LeatherShopAccounting {
         try {
             if (editingId) {
                 // Update existing transaction
-                await this.apiCall(`/api/transactions/${editingId}`, 'PUT', formData);
-                this.showNotification('Sale updated successfully!', 'success');
+                const result = await this.apiCall(`/api/transactions/${editingId}`, 'PUT', formData);
+                this.showNotification(`Sale updated successfully at ${this.formatTime(new Date(result.updated_at))}!`, 'success');
                 delete document.getElementById('salesForm').dataset.editingId;
             } else {
                 // Create new transaction
                 const result = await this.apiCall('/api/transactions', 'POST', formData);
-                this.showNotification(`Sale recorded successfully! TID: ${result.tid}`, 'success');
+                const timeInfo = result.transaction_time ? ` at ${result.transaction_time}` : '';
+                this.showNotification(`Sale recorded successfully! TID: ${result.tid}${timeInfo}`, 'success');
             }
             
             this.resetForm('salesForm');
@@ -331,13 +354,14 @@ class LeatherShopAccounting {
         try {
             if (editingId) {
                 // Update existing transaction
-                await this.apiCall(`/api/transactions/${editingId}`, 'PUT', formData);
-                this.showNotification('Expense updated successfully!', 'success');
+                const result = await this.apiCall(`/api/transactions/${editingId}`, 'PUT', formData);
+                this.showNotification(`Expense updated successfully at ${this.formatTime(new Date(result.updated_at))}!`, 'success');
                 delete document.getElementById('expenseForm').dataset.editingId;
             } else {
                 // Create new transaction
                 const result = await this.apiCall('/api/transactions', 'POST', formData);
-                this.showNotification(`Expense recorded successfully! TID: ${result.tid}`, 'success');
+                const timeInfo = result.transaction_time ? ` at ${result.transaction_time}` : '';
+                this.showNotification(`Expense recorded successfully! TID: ${result.tid}${timeInfo}`, 'success');
             }
             
             this.resetForm('expenseForm');
@@ -383,7 +407,10 @@ class LeatherShopAccounting {
             <div class="transaction-item">
                 <div class="transaction-info">
                     <div class="transaction-tid">TID: ${transaction.display_id}</div>
-                    <div class="transaction-date">${this.formatDate(transaction.date)}</div>
+                    <div class="transaction-date">
+                        ${this.formatDate(transaction.date)}
+                        ${transaction.timestamp_info ? `<br><small class="timestamp">${transaction.timestamp_info}</small>` : ''}
+                    </div>
                     <div class="transaction-desc">${this.escapeHtml(transaction.description || 'No description')}</div>
                     <div class="transaction-account">${transaction.account_name}</div>
                 </div>
@@ -394,7 +421,7 @@ class LeatherShopAccounting {
         `).join('');
     }
 
-    // Ledger Methods
+    // Ledger Methods - UPDATED WITH TIMESTAMP DISPLAY
     async loadLedger() {
         const filters = this.getLedgerFilters();
         
@@ -425,14 +452,18 @@ class LeatherShopAccounting {
         const tbody = document.getElementById('ledgerTableBody');
         
         if (transactions.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;"><em>No transactions found</em></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;"><em>No transactions found</em></td></tr>';
             return;
         }
 
         tbody.innerHTML = transactions.map(transaction => `
             <tr>
                 <td>${transaction.display_id}</td>
-                <td>${this.formatDate(transaction.date)}</td>
+                <td>
+                    <div>${this.formatDate(transaction.date)}</div>
+                    ${transaction.timestamp_info ? `<small class="timestamp">${transaction.timestamp_info}</small>` : ''}
+                    ${transaction.transaction_time_str ? `<small class="timestamp time">Time: ${transaction.transaction_time_str}</small>` : ''}
+                </td>
                 <td>
                     <span class="transaction-type ${transaction.type}">
                         ${transaction.type === 'credit' ? 'SALE' : 'EXPENSE'}
@@ -450,6 +481,9 @@ class LeatherShopAccounting {
                         </button>
                         <button class="btn-delete" onclick="app.deleteTransaction(${transaction.id})" title="Delete">
                             <i class="fas fa-trash"></i>
+                        </button>
+                        <button class="btn-info" onclick="app.viewTransactionAudit(${transaction.id})" title="View History">
+                            <i class="fas fa-history"></i>
                         </button>
                     </div>
                 </td>
@@ -482,7 +516,59 @@ class LeatherShopAccounting {
         this.loadLedger();
     }
 
-    // Print Functionality
+    // NEW: View transaction audit history
+    async viewTransactionAudit(transactionId) {
+        try {
+            const auditHistory = await this.apiCall(`/api/transactions/${transactionId}/audit`);
+            this.showAuditModal(transactionId, auditHistory);
+        } catch (error) {
+            this.showNotification('Failed to load transaction history!', 'error');
+        }
+    }
+
+    showAuditModal(transactionId, auditHistory) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay active';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Transaction History - TID: ${transactionId}</h3>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    ${auditHistory.length === 0 ? 
+                        '<p>No audit history found for this transaction.</p>' :
+                        `<div class="audit-history">
+                            ${auditHistory.map(record => `
+                                <div class="audit-record">
+                                    <div class="audit-header">
+                                        <span class="audit-action ${record.action.toLowerCase()}">${record.action}</span>
+                                        <span class="audit-time">${this.formatDateTime(record.changed_at)}</span>
+                                    </div>
+                                    <div class="audit-details">
+                                        <div class="audit-user">By: ${record.changed_by}</div>
+                                        ${record.old_values ? `
+                                            <div class="audit-changes">
+                                                <strong>Changes:</strong>
+                                                ${Object.entries(record.old_values).map(([key, oldValue]) => {
+                                                    const newValue = record.new_values[key];
+                                                    return oldValue !== newValue ? 
+                                                        `<div class="change-item">${key}: "${oldValue}" → "${newValue}"</div>` : '';
+                                                }).join('')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>`
+                    }
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    // Print Functionality - UPDATED WITH TIMESTAMPS
     async printLedger() {
         try {
             const filters = this.getLedgerFilters();
@@ -496,6 +582,7 @@ class LeatherShopAccounting {
 
             const businessName = this.businessInfo?.name || 'Leather Shop';
             const currentDate = new Date().toLocaleDateString();
+            const currentTime = this.formatTime(new Date());
             
             const summary = transactions.reduce((acc, transaction) => {
                 if (transaction.type === 'credit') {
@@ -506,12 +593,11 @@ class LeatherShopAccounting {
                 return acc;
             }, { sales: 0, expenses: 0 });
 
-            const printContent = this.generateLedgerPrintContent(businessName, currentDate, transactions, summary);
+            const printContent = this.generateLedgerPrintContent(businessName, currentDate, currentTime, transactions, summary);
             
             printWindow.document.write(printContent);
             printWindow.document.close();
             
-            // Wait for content to load before printing
             printWindow.onload = () => {
                 printWindow.focus();
             };
@@ -521,38 +607,7 @@ class LeatherShopAccounting {
         }
     }
 
-    async printDailySummary() {
-        try {
-            const date = document.getElementById('summaryDate').value;
-            if (!date) {
-                this.showNotification('Please select a date first!', 'error');
-                return;
-            }
-
-            const transactions = await this.apiCall(`/api/transactions?start_date=${date}&end_date=${date}`);
-            
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                this.showNotification('Please allow popups for printing', 'error');
-                return;
-            }
-
-            const businessName = this.businessInfo?.name || 'Leather Shop';
-            const printContent = this.generateDailySummaryPrintContent(businessName, date, transactions);
-            
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            
-            printWindow.onload = () => {
-                printWindow.focus();
-            };
-            
-        } catch (error) {
-            this.showNotification('Failed to generate daily summary report!', 'error');
-        }
-    }
-
-    generateLedgerPrintContent(businessName, currentDate, transactions, summary) {
+    generateLedgerPrintContent(businessName, currentDate, currentTime, transactions, summary) {
         return `
             <!DOCTYPE html>
             <html>
@@ -563,6 +618,7 @@ class LeatherShopAccounting {
                     .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
                     .business-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
                     .report-title { font-size: 18px; color: #666; }
+                    .report-time { font-size: 14px; color: #888; margin-bottom: 10px; }
                     .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
                     .summary-item { display: flex; justify-content: space-between; margin: 5px 0; }
                     .summary-total { font-weight: bold; border-top: 1px solid #ccc; padding-top: 5px; }
@@ -571,6 +627,7 @@ class LeatherShopAccounting {
                     th { background-color: #f2f2f2; font-weight: bold; }
                     .credit { color: green; }
                     .debit { color: red; }
+                    .timestamp { font-size: 11px; color: #666; display: block; }
                     .footer { margin-top: 30px; text-align: center; color: #666; font-size: 12px; }
                     @media print {
                         body { margin: 0; }
@@ -582,7 +639,7 @@ class LeatherShopAccounting {
                 <div class="header">
                     <div class="business-name">${businessName}</div>
                     <div class="report-title">Transaction Ledger Report</div>
-                    <div>Generated on: ${currentDate}</div>
+                    <div class="report-time">Generated on: ${currentDate} at ${currentTime}</div>
                 </div>
                 
                 <div class="summary">
@@ -604,7 +661,7 @@ class LeatherShopAccounting {
                     <thead>
                         <tr>
                             <th>TID</th>
-                            <th>Date</th>
+                            <th>Date & Time</th>
                             <th>Type</th>
                             <th>Account</th>
                             <th>Description</th>
@@ -615,7 +672,10 @@ class LeatherShopAccounting {
                         ${transactions.map(transaction => `
                             <tr>
                                 <td>${transaction.display_id}</td>
-                                <td>${this.formatDate(transaction.date)}</td>
+                                <td>
+                                    ${this.formatDate(transaction.date)}
+                                    ${transaction.timestamp_info ? `<span class="timestamp">${transaction.timestamp_info}</span>` : ''}
+                                </td>
                                 <td>${transaction.type === 'credit' ? 'SALE' : 'EXPENSE'}</td>
                                 <td>${transaction.account_name}</td>
                                 <td>${this.escapeHtml(transaction.description || '-')}</td>
@@ -629,122 +689,6 @@ class LeatherShopAccounting {
                 
                 <div class="footer">
                     <p>This is a computer-generated report from Leather Shop Accounting System</p>
-                </div>
-                
-                <div class="no-print" style="margin-top: 20px; text-align: center;">
-                    <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        Print Report
-                    </button>
-                    <button onclick="window.close()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">
-                        Close Window
-                    </button>
-                </div>
-            </body>
-            </html>
-        `;
-    }
-
-    generateDailySummaryPrintContent(businessName, date, transactions) {
-        const summary = transactions.reduce((acc, transaction) => {
-            if (transaction.type === 'credit') {
-                acc.sales += transaction.amount;
-            } else {
-                acc.expenses += transaction.amount;
-            }
-            return acc;
-        }, { sales: 0, expenses: 0 });
-
-        const expectedCash = summary.sales - summary.expenses;
-
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Daily Summary - ${businessName}</title>
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 20px; }
-                    .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-                    .business-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-                    .report-title { font-size: 18px; color: #666; }
-                    .date { font-size: 16px; margin: 10px 0; }
-                    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
-                    .summary-card { border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
-                    .summary-card h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-                    .amount { font-size: 18px; font-weight: bold; margin: 10px 0; }
-                    .positive { color: green; }
-                    .negative { color: red; }
-                    .transactions { margin: 20px 0; }
-                    table { width: 100%; border-collapse: collapse; }
-                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                    th { background-color: #f2f2f2; }
-                    .footer { margin-top: 30px; text-align: center; color: #666; font-size: 12px; }
-                    @media print {
-                        body { margin: 0; }
-                        .no-print { display: none; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div class="business-name">${businessName}</div>
-                    <div class="report-title">Daily Cash Summary Report</div>
-                    <div class="date">Date: ${this.formatDate(date)}</div>
-                </div>
-                
-                <div class="summary-grid">
-                    <div class="summary-card">
-                        <h3>Sales Summary</h3>
-                        <div class="amount positive">${this.formatCurrency(summary.sales)}</div>
-                        <div>Total Sales Amount</div>
-                    </div>
-                    <div class="summary-card">
-                        <h3>Expenses Summary</h3>
-                        <div class="amount negative">${this.formatCurrency(summary.expenses)}</div>
-                        <div>Total Expenses Amount</div>
-                    </div>
-                </div>
-                
-                <div class="summary-card">
-                    <h3>Cash Reconciliation</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>Expected Cash:</div>
-                        <div class="amount">${this.formatCurrency(expectedCash)}</div>
-                        <div>Recorded Sales - Recorded Expenses</div>
-                    </div>
-                </div>
-                
-                ${transactions.length > 0 ? `
-                <div class="transactions">
-                    <h3>Daily Transactions</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>TID</th>
-                                <th>Type</th>
-                                <th>Account</th>
-                                <th>Description</th>
-                                <th>Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${transactions.map(transaction => `
-                                <tr>
-                                    <td>${transaction.display_id}</td>
-                                    <td>${transaction.type === 'credit' ? 'SALE' : 'EXPENSE'}</td>
-                                    <td>${transaction.account_name}</td>
-                                    <td>${this.escapeHtml(transaction.description || '-')}</td>
-                                    <td class="${transaction.type}">
-                                        ${transaction.type === 'credit' ? '+' : '-'} ${this.formatCurrency(transaction.amount)}
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                ` : ''}
-                
-                <div class="footer">
-                    <p>Daily Cash Summary Report - Generated on ${new Date().toLocaleDateString()}</p>
                 </div>
                 
                 <div class="no-print" style="margin-top: 20px; text-align: center;">
@@ -812,8 +756,8 @@ class LeatherShopAccounting {
         };
 
         try {
-            await this.apiCall('/api/daily-summary', 'POST', formData);
-            this.showNotification('Daily summary saved successfully!', 'success');
+            const result = await this.apiCall('/api/daily-summary', 'POST', formData);
+            this.showNotification(`Daily summary saved successfully at ${this.formatTime(new Date())}!`, 'success');
             this.resetForm('summaryForm');
             this.loadDailySummaries();
         } catch (error) {
@@ -841,6 +785,11 @@ class LeatherShopAccounting {
         container.innerHTML = summaries.map(summary => `
             <div class="summary-card">
                 <div class="date">${this.formatDate(summary.date)}</div>
+                <div class="timestamp-info">
+                    <small>Created: ${summary.created_at_display || this.formatDate(summary.created_at)}</small>
+                    ${summary.updated_at_display && summary.updated_at_display !== summary.created_at_display ? 
+                        `<small>Updated: ${summary.updated_at_display}</small>` : ''}
+                </div>
                 <div class="amounts">
                     <div class="amount-item">
                         <span>Sales:</span>
@@ -897,7 +846,7 @@ class LeatherShopAccounting {
             document.getElementById('salesForm').dataset.editingId = transaction.id;
             
             this.showPage('sales');
-            this.showNotification(`Editing Sale TID: ${transaction.display_id}`, 'success');
+            this.showNotification(`Editing Sale TID: ${transaction.display_id} (Created: ${this.formatDateTime(transaction.created_at)})`, 'success');
         } else {
             document.getElementById('expenseDate').value = transaction.date;
             document.getElementById('expenseAccount').value = transaction.account_name;
@@ -907,7 +856,7 @@ class LeatherShopAccounting {
             document.getElementById('expenseForm').dataset.editingId = transaction.id;
             
             this.showPage('expenses');
-            this.showNotification(`Editing Expense TID: ${transaction.display_id}`, 'success');
+            this.showNotification(`Editing Expense TID: ${transaction.display_id} (Created: ${this.formatDateTime(transaction.created_at)})`, 'success');
         }
     }
 
@@ -917,8 +866,8 @@ class LeatherShopAccounting {
         }
 
         try {
-            await this.apiCall(`/api/transactions/${transactionId}`, 'DELETE');
-            this.showNotification('Transaction deleted successfully!', 'success');
+            const result = await this.apiCall(`/api/transactions/${transactionId}`, 'DELETE');
+            this.showNotification(`Transaction deleted successfully at ${this.formatTime(new Date(result.deleted_at))}!`, 'success');
             this.loadLedger();
             this.loadDashboard();
         } catch (error) {
@@ -926,7 +875,7 @@ class LeatherShopAccounting {
         }
     }
 
-    // Utility Methods
+    // Utility Methods - ENHANCED WITH TIME FORMATTING
     resetForm(formId) {
         document.getElementById(formId).reset();
         const today = new Date().toISOString().split('T')[0];
@@ -946,6 +895,29 @@ class LeatherShopAccounting {
         return new Date(dateString).toLocaleDateString('en-PK');
     }
 
+    // NEW: Format time only
+    formatTime(date) {
+        return new Date(date).toLocaleTimeString('en-PK', {
+            hour12: true,
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    // NEW: Format date and time
+    formatDateTime(dateTimeString) {
+        if (!dateTimeString) return '';
+        const date = new Date(dateTimeString);
+        return date.toLocaleString('en-PK', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+
     showNotification(message, type = 'success') {
         const notification = document.getElementById('notification');
         const messageEl = document.getElementById('notificationMessage');
@@ -955,7 +927,7 @@ class LeatherShopAccounting {
         
         setTimeout(() => {
             notification.classList.remove('show');
-        }, 3000);
+        }, 4000); // Increased timeout for better readability
     }
 
     // Additional print method for specific dates
@@ -979,6 +951,7 @@ class LeatherShopAccounting {
                         .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
                         .business-name { font-size: 24px; font-weight: bold; }
                         .date { font-size: 16px; margin: 10px 0; }
+                        .timestamp { font-size: 14px; color: #666; margin: 5px 0; }
                         .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
                         .summary-card { border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
                         .amount { font-size: 18px; font-weight: bold; margin: 10px 0; }
@@ -989,6 +962,7 @@ class LeatherShopAccounting {
                     <div class="header">
                         <div class="business-name">${businessName}</div>
                         <div class="date">Daily Cash Summary - ${this.formatDate(date)}</div>
+                        <div class="timestamp">Generated on ${new Date().toLocaleDateString()} at ${this.formatTime(new Date())}</div>
                     </div>
                     
                     <div class="summary-grid">
@@ -1017,7 +991,7 @@ class LeatherShopAccounting {
                     ` : ''}
                     
                     <div class="footer">
-                        <p>Generated on ${new Date().toLocaleDateString()}</p>
+                        <p>Generated by Leather Shop Accounting System</p>
                     </div>
                 </body>
                 </html>
@@ -1028,6 +1002,7 @@ class LeatherShopAccounting {
         });
     }
 }
+
 // Make showPage available globally for HTML onclick handlers
 window.showPage = function (page) {
     // Hide all pages
@@ -1042,9 +1017,5 @@ window.showPage = function (page) {
     });
 };
 
-
 // Initialize the application
 const app = new LeatherShopAccounting();
-
-
-
