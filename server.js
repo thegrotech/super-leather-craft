@@ -3,489 +3,607 @@ const cors = require('cors');
 const path = require('path');
 const businessConfig = require('./business.json');
 const helmet = require('helmet');
-
-// LOAD ENVIRONMENT VARIABLES FIRST!
-require('dotenv').config();
-
-// ADD THESE DEBUG LINES:
-console.log('🔍 VERIFY DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'MISSING');
-if (process.env.DATABASE_URL) {
-  console.log('🔍 DATABASE_URL contains pooler:', process.env.DATABASE_URL.includes('pooler'));
-  console.log('🔍 DATABASE_URL port:', process.env.DATABASE_URL.includes(':6543') ? '6543 ✅' : 'WRONG PORT ❌');
-  console.log('🔍 DATABASE_URL first 50 chars:', process.env.DATABASE_URL.substring(0, 50) + '...');
-}
-
-// STRICT PostgreSQL Check - No Fallback!
-console.log('🔍 Checking database configuration...');
-
-// STRICT PostgreSQL Check - No Fallback!
-console.log('🔍 Checking database configuration...');
-
-if (!process.env.DATABASE_URL) {
-  console.error('❌ CRITICAL ERROR: DATABASE_URL environment variable is missing!');
-  console.error('💡 Solution: Add DATABASE_URL to Render environment variables');
-  console.error('📋 Get the connection string from Supabase: Settings > Database');
-  process.exit(1); // Stop the server completely
-}
-
-console.log('✅ DATABASE_URL found, loading PostgreSQL...');
-const db = require('./database-postgres');
-
-// JWT authentication packages (now installed)
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Environment variables for authentication
+// Load environment variables first
+require('dotenv').config();
+
+// Debug database configuration
+console.log('🔍 DEBUG: Testing PostgreSQL connection...');
+console.log('🔍 DEBUG: DATABASE_URL length:', process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 'MISSING');
+console.log('🔍 DEBUG: DATABASE_URL contains pooler:', process.env.DATABASE_URL ? process.env.DATABASE_URL.includes('pooler') : false);
+
+// Validate critical environment variables
+if (!process.env.DATABASE_URL) {
+  console.error('❌ CRITICAL ERROR: DATABASE_URL environment variable is missing!');
+  process.exit(1);
+}
+
+if (!process.env.JWT_SECRET) {
+  console.error('❌ CRITICAL ERROR: JWT_SECRET environment variable is missing!');
+  process.exit(1);
+}
+
+if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) {
+  console.error('❌ CRITICAL ERROR: ADMIN_USERNAME or ADMIN_PASSWORD environment variable is missing!');
+  process.exit(1);
+}
+
+// Initialize PostgreSQL database
+console.log('✅ DATABASE_URL found, loading PostgreSQL...');
+const db = require('./database-postgres');
+
+// Environment variables
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = '24h'; // Token expires in 24 hours
+const JWT_EXPIRES_IN = '24h';
 
-// We'll hash the password on server start
+// Hashed admin password (will be set after hashing)
 let ADMIN_PASSWORD_HASH = '';
 
-// Hash the admin password when server starts
-console.log('🔐 Hashing admin password...');
-bcrypt.hash(ADMIN_PASSWORD, 10, (err, hash) => {
-    if (err) {
-        console.error('❌ Failed to hash password:', err);
-        process.exit(1);
-    }
-    ADMIN_PASSWORD_HASH = hash;
-    console.log('✅ Admin password hashed successfully');
-});
-
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 
-// Security Middleware
-app.use(helmet()); // ← ADD THIS - Adds security headers
+// ==================== MIDDLEWARE ====================
 
-// CORS configuration - only allow your frontend
+// Security headers
+app.use(helmet());
+
+// CORS configuration - more permissive for production
 app.use(cors({
-    origin: [
-        'http://localhost:5000',
-        'https://super-leather-craft.vercel.app'
-    ],
-    credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:5000',
+      'http://localhost:3000',
+      'https://super-leather-craft.vercel.app',
+      'https://super-leather-craft-backend.onrender.com'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('🔍 CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Other middleware
-app.use(express.json());
-// Only serve frontend in development
+// Handle preflight requests
+app.options('*', cors());
+
+// Body parsing middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Serve frontend in development only
 if (process.env.NODE_ENV !== 'production') {
-    app.use(express.static(path.join(__dirname, '../frontend')));
+  app.use(express.static(path.join(__dirname, '../frontend')));
 }
 
-// Simple base64 encoding function (since btoa is not available in Node.js)
-const btoa = (str) => Buffer.from(str).toString('base64');
-const atob = (str) => Buffer.from(str, 'base64').toString();
+// ==================== UTILITY FUNCTIONS ====================
 
 // JWT Authentication middleware
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
+  try {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized - No token provided' });
+      return res.status(401).json({ error: 'Unauthorized - No token provided' });
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
-    try {
-        // Verify JWT token
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded; // Attach user info to request
-        next();
-    } catch (error) {
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({ error: 'Token expired' });
-        } else if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({ error: 'Invalid token' });
-        } else {
-            return res.status(401).json({ error: 'Authentication failed' });
-        }
+    const token = authHeader.substring(7);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired' });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    } else {
+      return res.status(401).json({ error: 'Authentication failed' });
     }
+  }
 };
 
-// Serve frontend only in development
-app.get('/', (req, res) => {
-    if (process.env.NODE_ENV !== 'production') {
-        res.sendFile(path.join(__dirname, '../frontend/index.html'));
-    } else {
-        res.json({ 
-            message: 'Super Leather Craft Backend API', 
-            status: 'running',
-            docs: 'Frontend is hosted separately on Vercel'
-        });
-    }
+// Hash admin password on server start
+console.log('🔐 Hashing admin password...');
+bcrypt.hash(ADMIN_PASSWORD, 12)
+  .then(hash => {
+    ADMIN_PASSWORD_HASH = hash;
+    console.log('✅ Admin password hashed successfully');
+  })
+  .catch(err => {
+    console.error('❌ Failed to hash admin password:', err);
+    process.exit(1);
+  });
+
+// ==================== ROUTES ====================
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    await db.pool.query('SELECT 1 as test');
+    res.json({ 
+      status: 'healthy', 
+      database: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'unhealthy', 
+      database: 'disconnected',
+      error: error.message 
+    });
+  }
 });
 
-// Routes
+// Root endpoint
+app.get('/', (req, res) => {
+  if (process.env.NODE_ENV !== 'production') {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+  } else {
+    res.json({ 
+      message: 'Super Leather Craft Backend API', 
+      status: 'running',
+      environment: process.env.NODE_ENV,
+      frontend: 'https://super-leather-craft.vercel.app',
+      docs: 'API endpoints are available under /api/*'
+    });
+  }
+});
 
-// Login
-// Login with JWT and password hashing
-app.post('/api/login', (req, res) => {
+// Login endpoint
+app.post('/api/login', async (req, res) => {
+  try {
     const { username, password } = req.body;
     
-    // Check username first
-    if (username !== ADMIN_USERNAME) {
-        console.log('❌ Login failed - username mismatch');
-        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    // Input validation
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: 'Username and password are required' });
     }
 
     // Check if password hash is ready
     if (!ADMIN_PASSWORD_HASH) {
-        console.log('❌ Password hash not ready yet');
-        return res.status(500).json({ success: false, error: 'Server not ready' });
+      return res.status(503).json({ success: false, error: 'Server is initializing, please try again shortly' });
     }
 
-    // Check password using bcrypt (secure comparison)
-    bcrypt.compare(password, ADMIN_PASSWORD_HASH, (err, isMatch) => {
-        if (err) {
-            console.error('❌ Password comparison error:', err);
-            return res.status(500).json({ success: false, error: 'Server error' });
-        }
+    // Check credentials
+    if (username !== ADMIN_USERNAME) {
+      console.log('❌ Login failed - invalid username');
+      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
 
-        if (isMatch) {
-            // Create JWT token
-            const token = jwt.sign(
-                { 
-                    username: ADMIN_USERNAME,
-                    type: 'admin'
-                }, 
-                JWT_SECRET, 
-                { expiresIn: JWT_EXPIRES_IN }
-            );
+    // Compare passwords
+    const isMatch = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+    if (!isMatch) {
+      console.log('❌ Login failed - invalid password');
+      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
 
-            console.log('✅ Login successful - JWT token issued');
-            res.json({
-                success: true,
-                token,
-                business: businessConfig.business
-            });
-        } else {
-            console.log('❌ Login failed - incorrect password');
-            res.status(401).json({ success: false, error: 'Invalid credentials' });
-        }
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        username: ADMIN_USERNAME,
+        type: 'admin'
+      }, 
+      JWT_SECRET, 
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    console.log('✅ Login successful - JWT token issued');
+    res.json({
+      success: true,
+      token,
+      business: businessConfig.business
     });
+
+  } catch (error) {
+    console.error('❌ Login error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
 });
 
 // Get business info
 app.get('/api/business', authenticate, (req, res) => {
-    res.json(businessConfig.business);
+  res.json(businessConfig.business);
 });
 
-// Add transaction (sale or expense) - UPDATED WITH TID
-app.post('/api/transactions', authenticate, (req, res) => {
+// Add transaction (sale or expense)
+app.post('/api/transactions', authenticate, async (req, res) => {
+  try {
     const { date, account_name, description, amount, type } = req.body;
     
+    // Validation
     if (!date || !account_name || !amount || !type) {
-        return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'Missing required fields: date, account_name, amount, type' });
     }
 
-    // Get next TID first
-    db.getNextTID((err, tid) => {
-        if (err) {
-            return res.status(500).json({ error: 'Failed to generate transaction ID' });
-        }
+    if (!['credit', 'debit'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be either "credit" or "debit"' });
+    }
 
-        const query = `INSERT INTO transactions (tid, date, account_name, description, amount, type, reference) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?)`;
-        
-        db.run(query, [tid, date, account_name, description, amount, type, `REF-${Date.now()}`], 
-        function(err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            
-            // Update account balance
-            const balanceChange = type === 'credit' ? amount : -amount;
-            db.run(`UPDATE accounts SET balance = balance + ? WHERE name = ?`, 
-                   [balanceChange, account_name]);
-            
-            res.json({ 
-                success: true, 
-                id: this.lastID,
-                tid: tid, // Return TID to frontend
-                message: 'Transaction recorded successfully'
-            });
-        });
+    // Get next TID
+    const tid = await new Promise((resolve, reject) => {
+      db.getNextTID((err, tid) => {
+        if (err) reject(err);
+        else resolve(tid);
+      });
     });
+
+    // Insert transaction with RETURNING clause for PostgreSQL
+    const insertQuery = `
+      INSERT INTO transactions (tid, date, account_name, description, amount, type, reference) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7) 
+      RETURNING id
+    `;
+    const reference = `REF-${Date.now()}`;
+    
+    const result = await db.pool.query(insertQuery, [tid, date, account_name, description, amount, type, reference]);
+    const transactionId = result.rows[0].id;
+
+    // Update account balance
+    const balanceChange = type === 'credit' ? amount : -amount;
+    await db.pool.query(
+      'UPDATE accounts SET balance = balance + $1 WHERE name = $2',
+      [balanceChange, account_name]
+    );
+
+    res.json({ 
+      success: true, 
+      id: transactionId,
+      tid: tid,
+      message: 'Transaction recorded successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Transaction creation error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Get all transactions with filtering - UPDATED TO INCLUDE TID
-app.get('/api/transactions', authenticate, (req, res) => {
+// Get all transactions with filtering
+app.get('/api/transactions', authenticate, async (req, res) => {
+  try {
     const { start_date, end_date, account_name, type, limit } = req.query;
     
     let query = `SELECT *, COALESCE(tid, id) as display_id FROM transactions WHERE 1=1`;
     const params = [];
+    let paramCount = 0;
 
     if (start_date) {
-        query += ` AND date >= ?`;
-        params.push(start_date);
+      paramCount++;
+      query += ` AND date >= $${paramCount}`;
+      params.push(start_date);
     }
     if (end_date) {
-        query += ` AND date <= ?`;
-        params.push(end_date);
+      paramCount++;
+      query += ` AND date <= $${paramCount}`;
+      params.push(end_date);
     }
     if (account_name) {
-        query += ` AND account_name = ?`;
-        params.push(account_name);
+      paramCount++;
+      query += ` AND account_name = $${paramCount}`;
+      params.push(account_name);
     }
     if (type) {
-        query += ` AND type = ?`;
-        params.push(type);
+      paramCount++;
+      query += ` AND type = $${paramCount}`;
+      params.push(type);
     }
 
     query += ` ORDER BY date DESC, created_at DESC`;
 
     if (limit) {
-        query += ` LIMIT ?`;
-        params.push(parseInt(limit));
+      paramCount++;
+      query += ` LIMIT $${paramCount}`;
+      params.push(parseInt(limit));
     }
 
-    db.all(query, params, (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows);
-    });
+    const result = await db.pool.query(query, params);
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error('❌ Get transactions error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Get accounts
-app.get('/api/accounts', authenticate, (req, res) => {
-    db.all(`SELECT * FROM accounts ORDER BY type, name`, (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows);
-    });
+app.get('/api/accounts', authenticate, async (req, res) => {
+  try {
+    const result = await db.pool.query('SELECT * FROM accounts ORDER BY type, name');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Get accounts error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Get dashboard summary
-app.get('/api/dashboard', authenticate, (req, res) => {
+app.get('/api/dashboard', authenticate, async (req, res) => {
+  try {
     const today = new Date().toISOString().split('T')[0];
     
     // Today's sales and expenses
     const todayQuery = `
-        SELECT 
-            SUM(CASE WHEN type = 'credit' THEN amount ELSE 0 END) as today_sales,
-            SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END) as today_expenses
-        FROM transactions 
-        WHERE date = ?
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'credit' THEN amount ELSE 0 END), 0) as today_sales,
+        COALESCE(SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END), 0) as today_expenses
+      FROM transactions 
+      WHERE date = $1
     `;
 
     // Current balances
     const balanceQuery = `
-        SELECT 
-            SUM(CASE WHEN type = 'revenue' THEN balance ELSE 0 END) as total_revenue,
-            SUM(CASE WHEN type = 'expense' THEN balance ELSE 0 END) as total_expenses
-        FROM accounts
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'revenue' THEN balance ELSE 0 END), 0) as total_revenue,
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN balance ELSE 0 END), 0) as total_expenses
+      FROM accounts
     `;
 
-    db.get(todayQuery, [today], (err, todayData) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        
-        db.get(balanceQuery, (err, balanceData) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            
-            const netBalance = (balanceData.total_revenue || 0) - (balanceData.total_expenses || 0);
-            
-            res.json({
-                today_sales: todayData.today_sales || 0,
-                today_expenses: todayData.today_expenses || 0,
-                net_balance: netBalance,
-                total_revenue: balanceData.total_revenue || 0,
-                total_expenses: balanceData.total_expenses || 0
-            });
-        });
+    const [todayResult, balanceResult] = await Promise.all([
+      db.pool.query(todayQuery, [today]),
+      db.pool.query(balanceQuery)
+    ]);
+
+    const todayData = todayResult.rows[0];
+    const balanceData = balanceResult.rows[0];
+    
+    const netBalance = balanceData.total_revenue - balanceData.total_expenses;
+    
+    res.json({
+      today_sales: parseFloat(todayData.today_sales),
+      today_expenses: parseFloat(todayData.today_expenses),
+      net_balance: parseFloat(netBalance),
+      total_revenue: parseFloat(balanceData.total_revenue),
+      total_expenses: parseFloat(balanceData.total_expenses)
     });
+
+  } catch (error) {
+    console.error('❌ Dashboard error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Save daily cash summary
-app.post('/api/daily-summary', authenticate, (req, res) => {
+app.post('/api/daily-summary', authenticate, async (req, res) => {
+  try {
     const { date, physical_cash, notes } = req.body;
     
     if (!date || physical_cash === undefined) {
-        return res.status(400).json({ error: 'Date and physical cash are required' });
+      return res.status(400).json({ error: 'Date and physical cash are required' });
     }
 
     // Calculate expected cash (sales - expenses)
     const summaryQuery = `
-        SELECT 
-            SUM(CASE WHEN type = 'credit' THEN amount ELSE 0 END) as total_sales,
-            SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END) as total_expenses
-        FROM transactions 
-        WHERE date = ?
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'credit' THEN amount ELSE 0 END), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END), 0) as total_expenses
+      FROM transactions 
+      WHERE date = $1
     `;
 
-    db.get(summaryQuery, [date], (err, data) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
+    const result = await db.pool.query(summaryQuery, [date]);
+    const data = result.rows[0];
 
-        const total_sales = data.total_sales || 0;
-        const total_expenses = data.total_expenses || 0;
-        const expected_cash = total_sales - total_expenses;
-        const difference = physical_cash - expected_cash;
+    const total_sales = parseFloat(data.total_sales);
+    const total_expenses = parseFloat(data.total_expenses);
+    const expected_cash = total_sales - total_expenses;
+    const difference = physical_cash - expected_cash;
 
-        const upsertQuery = `
-            INSERT OR REPLACE INTO daily_summaries 
-            (date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
+    const upsertQuery = `
+      INSERT INTO daily_summaries 
+      (date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (date) 
+      DO UPDATE SET 
+        total_sales = EXCLUDED.total_sales,
+        total_expenses = EXCLUDED.total_expenses,
+        expected_cash = EXCLUDED.expected_cash,
+        physical_cash = EXCLUDED.physical_cash,
+        difference = EXCLUDED.difference,
+        notes = EXCLUDED.notes
+      RETURNING id
+    `;
 
-        db.run(upsertQuery, [date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes], 
-        function(err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            res.json({ success: true, id: this.lastID });
-        });
-    });
+    const upsertResult = await db.pool.query(upsertQuery, [
+      date, total_sales, total_expenses, expected_cash, physical_cash, difference, notes
+    ]);
+
+    res.json({ success: true, id: upsertResult.rows[0].id });
+
+  } catch (error) {
+    console.error('❌ Daily summary error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Get daily summaries
-app.get('/api/daily-summaries', authenticate, (req, res) => {
+app.get('/api/daily-summaries', authenticate, async (req, res) => {
+  try {
     const { start_date, end_date } = req.query;
     
     let query = `SELECT * FROM daily_summaries WHERE 1=1`;
     const params = [];
+    let paramCount = 0;
 
     if (start_date) {
-        query += ` AND date >= ?`;
-        params.push(start_date);
+      paramCount++;
+      query += ` AND date >= $${paramCount}`;
+      params.push(start_date);
     }
     if (end_date) {
-        query += ` AND date <= ?`;
-        params.push(end_date);
+      paramCount++;
+      query += ` AND date <= $${paramCount}`;
+      params.push(end_date);
     }
 
     query += ` ORDER BY date DESC`;
 
-    db.all(query, params, (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows);
-    });
+    const result = await db.pool.query(query, params);
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error('❌ Get daily summaries error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Update transaction - UPDATED TO PRESERVE TID
-app.put('/api/transactions/:id', authenticate, (req, res) => {
+// Update transaction
+app.put('/api/transactions/:id', authenticate, async (req, res) => {
+  try {
     const transactionId = req.params.id;
     const { date, account_name, description, amount, type } = req.body;
     
     if (!date || !account_name || !amount || !type) {
-        return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Get old transaction first to calculate balance difference
-    db.get(`SELECT * FROM transactions WHERE id = ?`, [transactionId], (err, oldTransaction) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        
-        if (!oldTransaction) {
-            return res.status(404).json({ error: 'Transaction not found' });
-        }
+    if (!['credit', 'debit'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be either "credit" or "debit"' });
+    }
 
-        // Update transaction - preserve the original TID
-        const updateQuery = `
-            UPDATE transactions 
-            SET date = ?, account_name = ?, description = ?, amount = ?, type = ?
-            WHERE id = ?
-        `;
-        
-        db.run(updateQuery, [date, account_name, description, amount, type, transactionId], 
-        function(err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            
-            // Revert old balance change
-            const oldBalanceChange = oldTransaction.type === 'credit' ? -oldTransaction.amount : oldTransaction.amount;
-            db.run(`UPDATE accounts SET balance = balance + ? WHERE name = ?`, 
-                   [oldBalanceChange, oldTransaction.account_name]);
-            
-            // Apply new balance change
-            const newBalanceChange = type === 'credit' ? amount : -amount;
-            db.run(`UPDATE accounts SET balance = balance + ? WHERE name = ?`, 
-                   [newBalanceChange, account_name]);
-            
-            res.json({ 
-                success: true, 
-                message: 'Transaction updated successfully'
-            });
-        });
+    // Get old transaction first
+    const oldResult = await db.pool.query('SELECT * FROM transactions WHERE id = $1', [transactionId]);
+    if (oldResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    const oldTransaction = oldResult.rows[0];
+
+    // Update transaction
+    const updateQuery = `
+      UPDATE transactions 
+      SET date = $1, account_name = $2, description = $3, amount = $4, type = $5
+      WHERE id = $6
+    `;
+    
+    await db.pool.query(updateQuery, [date, account_name, description, amount, type, transactionId]);
+
+    // Revert old balance change
+    const oldBalanceChange = oldTransaction.type === 'credit' ? -oldTransaction.amount : oldTransaction.amount;
+    await db.pool.query(
+      'UPDATE accounts SET balance = balance + $1 WHERE name = $2',
+      [oldBalanceChange, oldTransaction.account_name]
+    );
+
+    // Apply new balance change
+    const newBalanceChange = type === 'credit' ? amount : -amount;
+    await db.pool.query(
+      'UPDATE accounts SET balance = balance + $1 WHERE name = $2',
+      [newBalanceChange, account_name]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Transaction updated successfully'
     });
+
+  } catch (error) {
+    console.error('❌ Update transaction error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Delete transaction
-app.delete('/api/transactions/:id', authenticate, (req, res) => {
+app.delete('/api/transactions/:id', authenticate, async (req, res) => {
+  try {
     const transactionId = req.params.id;
     
-    // Get transaction first to update account balance
-    db.get(`SELECT * FROM transactions WHERE id = ?`, [transactionId], (err, transaction) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        
-        if (!transaction) {
-            return res.status(404).json({ error: 'Transaction not found' });
-        }
+    // Get transaction first
+    const result = await db.pool.query('SELECT * FROM transactions WHERE id = $1', [transactionId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
 
-        // Delete transaction
-        db.run(`DELETE FROM transactions WHERE id = ?`, [transactionId], function(err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            
-            // Update account balance
-            const balanceChange = transaction.type === 'credit' ? -transaction.amount : transaction.amount;
-            db.run(`UPDATE accounts SET balance = balance + ? WHERE name = ?`, 
-                   [balanceChange, transaction.account_name]);
-            
-            res.json({ 
-                success: true, 
-                message: 'Transaction deleted successfully'
-            });
-        });
+    const transaction = result.rows[0];
+
+    // Delete transaction
+    await db.pool.query('DELETE FROM transactions WHERE id = $1', [transactionId]);
+
+    // Update account balance
+    const balanceChange = transaction.type === 'credit' ? -transaction.amount : transaction.amount;
+    await db.pool.query(
+      'UPDATE accounts SET balance = balance + $1 WHERE name = $2',
+      [balanceChange, transaction.account_name]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Transaction deleted successfully'
     });
+
+  } catch (error) {
+    console.error('❌ Delete transaction error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Get single transaction
-app.get('/api/transactions/:id', authenticate, (req, res) => {
+app.get('/api/transactions/:id', authenticate, async (req, res) => {
+  try {
     const transactionId = req.params.id;
     
-    db.get(`SELECT *, COALESCE(tid, id) as display_id FROM transactions WHERE id = ?`, [transactionId], (err, row) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        
-        if (!row) {
-            return res.status(404).json({ error: 'Transaction not found' });
-        }
-        
-        res.json(row);
-    });
+    const result = await db.pool.query(
+      'SELECT *, COALESCE(tid, id) as display_id FROM transactions WHERE id = $1', 
+      [transactionId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    
+    res.json(result.rows[0]);
+
+  } catch (error) {
+    console.error('❌ Get transaction error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ERROR HANDLING ====================
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Global error handler
+app.use((error, req, res, next) => {
+  console.error('🚨 Global Error Handler:', error);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
+// ==================== SERVER STARTUP ====================
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('🚨 Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📊 Frontend: http://localhost:${PORT}`);
-    console.log(`🔑 Login username: ${ADMIN_USERNAME}`);
-    console.log(`🔒 JWT Authentication enabled`);
-    console.log(`⏰ Token expiration: ${JWT_EXPIRES_IN}`);
-    console.log(`🛡️  Security headers enabled with Helmet`);
-
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Frontend: http://localhost:${PORT}`);
+  console.log(`🔑 Login username: ${ADMIN_USERNAME}`);
+  console.log(`🔒 JWT Authentication enabled`);
+  console.log(`⏰ Token expiration: ${JWT_EXPIRES_IN}`);
+  console.log(`🛡️ Security headers enabled with Helmet`);
+  console.log(`🌐 CORS configured for production`);
 });
-
-
-
-
