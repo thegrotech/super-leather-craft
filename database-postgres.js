@@ -6,7 +6,10 @@ console.log('🔍 DEBUG: DATABASE_URL length:', process.env.DATABASE_URL ? proce
 // Create PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
+  connectionTimeoutMillis: 10000, // How long to wait for a connection
 });
 
 // Test connection immediately
@@ -106,21 +109,35 @@ const initializeDatabase = async () => {
   }
 };
 
-// Database functions - matching your SQLite interface
+// Database functions - FIXED VERSION
 const db = {
-  // Get next TID (same as your SQLite version but for PostgreSQL)
+  // ✅ FIXED: Atomic TID generation using PostgreSQL advisory locks
   getNextTID: function(callback) {
-    pool.query(`SELECT value FROM app_metadata WHERE key = 'last_tid'`)
+    // Use a transaction with row locking to prevent race conditions
+    const getTIDQuery = `
+      WITH updated AS (
+        UPDATE app_metadata 
+        SET value = (CAST(value AS INTEGER) + 1)::VARCHAR,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE key = 'last_tid'
+        RETURNING CAST(value AS INTEGER) as new_tid
+      )
+      SELECT new_tid FROM updated
+      UNION ALL
+      SELECT 1 as new_tid
+      WHERE NOT EXISTS (SELECT 1 FROM updated)
+    `;
+
+    pool.query(getTIDQuery)
       .then(result => {
-        const nextTID = parseInt(result.rows[0]?.value || 0) + 1;
-        
-        // Update the last_tid
-        return pool.query(`UPDATE app_metadata SET value = $1 WHERE key = 'last_tid'`, [nextTID])
-          .then(() => {
-            callback(null, nextTID);
-          });
+        if (result.rows.length === 0 || !result.rows[0].new_tid) {
+          throw new Error('Failed to generate TID');
+        }
+        const nextTID = result.rows[0].new_tid;
+        callback(null, nextTID);
       })
       .catch(error => {
+        console.error('❌ TID generation error:', error);
         callback(error);
       });
   },
@@ -134,11 +151,12 @@ const db = {
     
     pool.query(postgresQuery, params)
       .then(result => {
-        // For INSERT queries, return lastID
+        // For INSERT queries with RETURNING clause
         const lastID = result.rows[0]?.id || null;
         callback(null, { lastID: lastID, changes: result.rowCount });
       })
       .catch(error => {
+        console.error('❌ Database run error:', error);
         callback(error);
       });
   },
@@ -154,6 +172,7 @@ const db = {
         callback(null, result.rows[0] || null);
       })
       .catch(error => {
+        console.error('❌ Database get error:', error);
         callback(error);
       });
   },
@@ -169,6 +188,7 @@ const db = {
         callback(null, result.rows);
       })
       .catch(error => {
+        console.error('❌ Database all error:', error);
         callback(error);
       });
   },
@@ -180,12 +200,20 @@ const db = {
 // Test connection and initialize
 pool.on('connect', () => {
   console.log('✅ Connected to PostgreSQL database');
-  initializeDatabase();
+  initializeDatabase().catch(err => {
+    console.error('❌ Database initialization failed:', err);
+  });
 });
 
 pool.on('error', (err) => {
   console.error('❌ PostgreSQL pool error:', err);
 });
 
-module.exports = db;
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('🛑 Shutting down gracefully...');
+  await pool.end();
+  process.exit(0);
+});
 
+module.exports = db;
