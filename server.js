@@ -101,6 +101,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
+      'http://localhost:10000',
       'http://localhost:5000',
       'http://localhost:3000',
       'https://super-leather-craft.vercel.app',

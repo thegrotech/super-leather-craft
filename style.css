@@ -86,6 +86,36 @@ body {
     display: block;
 }
 
+/* ===== LEATHER THEME COLORS ===== */
+:root {
+    --leather-brown: #5a3e2b;
+    --leather-dark: #3d2920;
+    --leather-light: #e8d5c4;
+    --leather-gold: #d4a056;
+    --leather-texture: radial-gradient(circle at top left, rgba(0,0,0,0.25), rgba(0,0,0,0.5));
+
+    --primary: var(--leather-brown);
+    --primary-dark: var(--leather-dark);
+
+    --surface: #ffffff;
+    --border: #d7c4b4;
+
+    --text-base: 1rem;
+    --text-lg: 1.1rem;
+    --text-3xl: 2rem;
+
+    --radius: 10px;
+    --radius-xl: 16px;
+
+    --space-sm: 6px;
+    --space-lg: 14px;
+    --space-xl: 24px;
+    --space-2xl: 32px;
+
+    --shadow-lg: 0 8px 25px rgba(0,0,0,0.25);
+}
+
+
 /* ===== LOGIN SCREEN ===== */
 .login-container {
     min-height: 100vh;
@@ -93,79 +123,127 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+
+    /* Leather textured background */
+    background: linear-gradient(135deg, var(--leather-brown), var(--leather-dark)),
+                var(--leather-texture);
+    background-blend-mode: overlay;
+    background-size: cover;
+
     padding: var(--space-xl);
 }
 
+
+/* ===== HEADER ===== */
 .login-header {
     text-align: center;
-    color: white;
+    color: var(--leather-light);
     margin-bottom: var(--space-2xl);
 }
 
 .login-header i {
+    font-size: 3rem;
+    color: var(--leather-gold);
     margin-bottom: var(--space-lg);
-    opacity: 0.9;
 }
 
 .login-header h1 {
     font-size: var(--text-3xl);
     margin-bottom: var(--space-sm);
-    font-weight: 700;
-    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+
+    /* Gold embossed effect */
+    color: var(--leather-gold);
+    text-shadow: 0 2px 3px rgba(0,0,0,0.4);
 }
 
 .login-header p {
     font-size: var(--text-lg);
-    opacity: 0.9;
+    color: #f0e6dd;
+    opacity: 0.85;
 }
 
+
+/* ===== FORM ===== */
 .login-form {
-    background: var(--surface);
+    background: #fff;
     padding: var(--space-2xl);
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
+
+    /* subtle leather edge shadow */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+
+    border: 1px solid #cbb59b;
+    max-width: 420px;
     width: 100%;
-    max-width: 400px;
 }
 
+
+/* ===== INPUTS ===== */
 .input-group {
     position: relative;
     margin-bottom: var(--space-lg);
 }
 
-.input-group i {
+/* Input field */
+.input-group input {
+    width: 100%;
+    padding: var(--space-lg) var(--space-xl) var(--space-lg) calc(var(--space-lg) * 3);
+    border: 2px solid #d6c1af;
+    border-radius: var(--radius);
+    font-size: var(--text-base);
+    background: #fff8f1;
+    transition: all 0.25s ease;
+}
+
+/* Icons on the left (user & lock) */
+.input-group i.fas.fa-user,
+.input-group i.fas.fa-lock {
     position: absolute;
     left: var(--space-lg);
     top: 50%;
     transform: translateY(-50%);
-    color: var(--text-light);
-    z-index: 1;
+    color: #a38d77;
+    font-size: 1.1rem;
+    pointer-events: none; /* prevents blocking input */
 }
 
-.input-group input {
-    width: 100%;
-    padding: var(--space-lg) var(--space-lg) var(--space-lg) calc(var(--space-lg) * 3);
-    border: 2px solid var(--border);
-    border-radius: var(--radius);
-    font-size: var(--text-base);
-    transition: all 0.2s ease;
-    background: var(--surface);
-    position: relative;
+/* Eye toggle icon on right */
+.input-group i.toggle-password {
+    position: absolute;
+    right: var(--space-lg);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1rem;
+    color: #a38d77;
+    cursor: pointer;
+    transition: color 0.25s ease;
 }
 
+.input-group i.toggle-password:hover {
+    color: var(--leather-gold);
+}
+
+/* Input focus effect */
 .input-group input:focus {
+    border-color: var(--leather-gold);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(212, 160, 86, 0.2);
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+
+/* ===== FOOTER ===== */
 .login-footer {
     margin-top: var(--space-xl);
     text-align: center;
-    color: white;
+    color: #f7eadf;
     opacity: 0.8;
+    font-size: 0.9rem;
 }
+
 
 /* ===== BUTTONS ===== */
 .btn {
