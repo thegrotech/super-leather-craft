@@ -252,35 +252,37 @@ class LeatherShopAccounting {
 
     // API Methods
     async apiCall(endpoint, method = 'GET', data = null) {
-        const options = {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        };
-
-        if (this.token) {
-            options.headers.Authorization = `Bearer ${this.token}`;
+    const API_BASE_URL = 'https://super-leather-craft-backend.onrender.com';
+    
+    const options = {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
         }
+    };
 
-        if (data) {
-            options.body = JSON.stringify(data);
-        }
-
-        try {
-            const API_BASE_URL = 'https://super-leather-craft-backend.onrender.com'; const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-            if (response.status === 401) {
-                this.handleLogout();
-                throw new Error('Unauthorized');
-            }
-            return await response.json();
-        } catch (error) {
-            if (error.message === 'Unauthorized') {
-                this.showNotification('Session expired. Please login again.', 'error');
-            }
-            throw error;
-        }
+    if (this.token) {
+        options.headers.Authorization = `Bearer ${this.token}`;
     }
+
+    if (data) {
+        options.body = JSON.stringify(data);
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+        if (response.status === 401) {
+            this.handleLogout();
+            throw new Error('Unauthorized');
+        }
+        return await response.json();
+    } catch (error) {
+        if (error.message === 'Unauthorized') {
+            this.showNotification('Session expired. Please login again.', 'error');
+        }
+        throw error;
+    }
+}
 
     // Transaction Methods
     async handleSaleSubmit() {
@@ -1043,5 +1045,6 @@ window.showPage = function (page) {
 
 // Initialize the application
 const app = new LeatherShopAccounting();
+
 
 
