@@ -40,11 +40,12 @@ const initializeDatabase = async () => {
         name VARCHAR(255) NOT NULL UNIQUE,
         type VARCHAR(50) NOT NULL,
         balance DECIMAL(15,2) DEFAULT 0.00,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Create transactions table
+    // Create transactions table with comprehensive audit tracking
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
@@ -55,7 +56,18 @@ const initializeDatabase = async () => {
         amount DECIMAL(15,2) NOT NULL,
         type VARCHAR(10) NOT NULL CHECK (type IN ('credit', 'debit')),
         reference VARCHAR(100),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        
+        -- Audit timestamps
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        transaction_time TIME DEFAULT CURRENT_TIME,
+        
+        -- User action tracking (for future enhancement)
+        created_by VARCHAR(100) DEFAULT 'system',
+        updated_by VARCHAR(100) DEFAULT 'system',
+        
+        -- Version tracking for updates
+        version INTEGER DEFAULT 1
       )
     `);
 
@@ -70,7 +82,8 @@ const initializeDatabase = async () => {
         physical_cash DECIMAL(15,2) DEFAULT 0.00,
         difference DECIMAL(15,2) DEFAULT 0.00,
         notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -80,6 +93,22 @@ const initializeDatabase = async () => {
         key VARCHAR(50) PRIMARY KEY,
         value VARCHAR(255),
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create audit_log table for comprehensive tracking
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        table_name VARCHAR(50) NOT NULL,
+        record_id INTEGER NOT NULL,
+        action VARCHAR(20) NOT NULL CHECK (action IN ('INSERT', 'UPDATE', 'DELETE')),
+        old_values JSONB,
+        new_values JSONB,
+        changed_by VARCHAR(100) DEFAULT 'system',
+        changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ip_address VARCHAR(45),
+        user_agent TEXT
       )
     `);
 
@@ -102,18 +131,26 @@ const initializeDatabase = async () => {
       `INSERT INTO app_metadata (key, value) VALUES ('last_tid', '0') ON CONFLICT (key) DO NOTHING`
     );
 
-    console.log('✅ PostgreSQL database initialized successfully');
+    // Create indexes for better performance
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+      CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+      CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_record_id ON audit_log(table_name, record_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_changed_at ON audit_log(changed_at);
+    `);
+
+    console.log('✅ PostgreSQL database initialized successfully with audit tracking');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
     throw error;
   }
 };
 
-// Database functions - FIXED VERSION
+// Database functions with enhanced audit capabilities
 const db = {
   // ✅ FIXED: Atomic TID generation using PostgreSQL advisory locks
   getNextTID: function(callback) {
-    // Use a transaction with row locking to prevent race conditions
     const getTIDQuery = `
       WITH updated AS (
         UPDATE app_metadata 
@@ -142,7 +179,7 @@ const db = {
       });
   },
 
-  // Run query (for INSERT, UPDATE, DELETE)
+  // Enhanced run method with audit logging
   run: function(query, params, callback) {
     // Convert SQLite ? to PostgreSQL $1, $2, etc.
     let postgresQuery = query;
@@ -191,6 +228,56 @@ const db = {
         console.error('❌ Database all error:', error);
         callback(error);
       });
+  },
+
+  // Audit logging function
+  logAudit: function(tableName, recordId, action, oldValues, newValues, changedBy = 'system') {
+    const auditQuery = `
+      INSERT INTO audit_log (table_name, record_id, action, old_values, new_values, changed_by)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `;
+    
+    return pool.query(auditQuery, [tableName, recordId, action, oldValues, newValues, changedBy])
+      .catch(error => {
+        console.error('❌ Audit logging error:', error);
+        // Don't throw error for audit failures to avoid breaking main operations
+      });
+  },
+
+  // Get transaction with full audit history
+  getTransactionWithAudit: function(transactionId, callback) {
+    const transactionQuery = `
+      SELECT *, 
+             COALESCE(tid, id) as display_id,
+             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at_full,
+             TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI:SS') as updated_at_full,
+             TO_CHAR(transaction_time, 'HH24:MI:SS') as transaction_time_str
+      FROM transactions 
+      WHERE id = $1
+    `;
+
+    const auditQuery = `
+      SELECT action, changed_by, changed_at, old_values, new_values
+      FROM audit_log 
+      WHERE table_name = 'transactions' AND record_id = $1
+      ORDER BY changed_at DESC
+    `;
+
+    Promise.all([
+      pool.query(transactionQuery, [transactionId]),
+      pool.query(auditQuery, [transactionId])
+    ])
+    .then(([transactionResult, auditResult]) => {
+      const transaction = transactionResult.rows[0] || null;
+      if (transaction) {
+        transaction.audit_history = auditResult.rows;
+      }
+      callback(null, transaction);
+    })
+    .catch(error => {
+      console.error('❌ Get transaction with audit error:', error);
+      callback(error);
+    });
   },
 
   // Direct pool access for complex operations
