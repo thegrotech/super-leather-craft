@@ -1335,4 +1335,112 @@ button.btn-secondary:hover {
         padding: var(--space-md) var(--space-lg);
         font-size: var(--text-sm);
     }
+
+}
+/* Timestamp styling */
+.timestamp {
+    font-size: 0.75rem;
+    color: #666;
+    display: block;
+    margin-top: 2px;
+}
+
+.timestamp.time {
+    color: #007bff;
+    font-style: italic;
+}
+
+/* Current time display */
+#currentTime {
+    font-size: 0.9rem;
+    color: #666;
+    margin-left: 10px;
+}
+
+/* Audit history modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    z-index: 1000;
+}
+
+.modal-overlay.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 1rem;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: between;
+    align-items: center;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.audit-history {
+    padding: 1rem;
+}
+
+.audit-record {
+    border: 1px solid #eee;
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.audit-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.audit-action.insert { color: green; }
+.audit-action.update { color: orange; }
+.audit-action.delete { color: red; }
+
+.audit-changes {
+    margin-top: 0.5rem;
+}
+
+.change-item {
+    font-size: 0.85rem;
+    margin: 0.25rem 0;
+    padding-left: 1rem;
+}
+
+/* Additional action button */
+.btn-info {
+    background: #17a2b8;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 0.25rem;
+}
+
+.btn-info:hover {
+    background: #138496;
 }
