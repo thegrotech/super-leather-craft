@@ -1,0 +1,3 @@
+frontend vercel
+backend render
+database supabase VIA postgreSQL
