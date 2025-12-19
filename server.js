@@ -48,13 +48,14 @@ const PORT = process.env.PORT || 10000;
 
 // ==================== UTILITY FUNCTIONS ====================
 
-// FIX: Returns a Date Object. 'pg' library will send this to Supabase correctly.
+// 1. For created_at and updated_at (TIMESTAMP columns)
+// We return a real Date object so the 'pg' library handles formatting
 function getPakistanTimestamp() {
   return new Date(); 
 }
 
-// FIX: Returns "17:02:00" (for 05:02 PM). 
-// This format is explicitly accepted by Postgres TIME columns.
+// 2. For transaction_time (TIME column)
+// We use 'en-GB' because it gives us HH:MM:SS (24-hour) which Postgres TIME type loves
 function getPakistanTime() {
   return new Date().toLocaleTimeString("en-GB", { 
     timeZone: "Asia/Karachi",
@@ -62,8 +63,8 @@ function getPakistanTime() {
   });
 }
 
-// KEEP: This handles the "+5 hours" shift visually for your users.
-// When it gets "12:02 UTC" from the DB, this function shifts it back to "05:02 PM"
+// 3. For display on your website (KEEP THIS AS IS)
+// This is what takes the DB value and makes it look good for you
 function formatTimestampForDisplay(timestamp) {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -775,6 +776,7 @@ app.listen(PORT, () => {
   console.log(`🌐 CORS configured for production`);
   console.log(`⏰ Server time: ${getPakistanTimestamp()}`);
 });
+
 
 
 
