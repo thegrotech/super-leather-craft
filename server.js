@@ -48,33 +48,20 @@ const PORT = process.env.PORT || 10000;
 
 // ==================== UTILITY FUNCTIONS ====================
 
-// Get Pakistan time for timestamps (12-hour format)
+// FIX: Use Date object so PostgreSQL can handle the format automatically
 function getPakistanTimestamp() {
-  const now = new Date();
-  return now.toLocaleString("en-PK", { 
-    timeZone: "Asia/Karachi",
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  });
+  return new Date(); 
 }
 
-// Get only time part for transaction_time (12-hour format)
+// FIX: Use 24-hour format string (HH:MM:SS) which is the database standard
 function getPakistanTime() {
-  return new Date().toLocaleTimeString("en-PK", { 
+  return new Date().toLocaleTimeString("en-GB", { 
     timeZone: "Asia/Karachi",
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
+    hour12: false 
   });
 }
 
-// Format timestamp for display (12-hour Karachi time)
+// KEEP THIS AS IS: This is for your frontend display
 function formatTimestampForDisplay(timestamp) {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -786,5 +773,6 @@ app.listen(PORT, () => {
   console.log(`🌐 CORS configured for production`);
   console.log(`⏰ Server time: ${getPakistanTimestamp()}`);
 });
+
 
 
