@@ -28,24 +28,32 @@ class LeatherShopAccounting {
     }
 
     setCurrentDate() {
-        const now = new Date();
-        const options = { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        };
-        document.getElementById('currentDate').textContent = 
-            now.toLocaleDateString('en-US', options);
-        
-        // Set default dates in forms to today
-        const today = now.toISOString().split('T')[0];
-        document.getElementById('saleDate').value = today;
-        document.getElementById('expenseDate').value = today;
-        document.getElementById('summaryDate').value = today;
-        document.getElementById('filterStartDate').value = today;
-        document.getElementById('filterEndDate').value = today;
-    }
+    // Get current date in Pakistan Timezone
+    const now = new Date();
+    const pakDate = new Intl.DateTimeFormat('en-CA', { // en-CA gives YYYY-MM-DD
+        timeZone: 'Asia/Karachi',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(now);
+
+    const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    };
+    
+    document.getElementById('currentDate').textContent = 
+        now.toLocaleDateString('en-US', options);
+    
+    // Set default dates to the actual Pakistan "Today"
+    document.getElementById('saleDate').value = pakDate;
+    document.getElementById('expenseDate').value = pakDate;
+    document.getElementById('summaryDate').value = pakDate;
+    document.getElementById('filterStartDate').value = pakDate;
+    document.getElementById('filterEndDate').value = pakDate;
+}
 
     // NEW: Display current Pakistan time
     displayCurrentTime() {
@@ -338,7 +346,7 @@ class LeatherShopAccounting {
             if (editingId) {
                 // Update existing transaction
                 const result = await this.apiCall(`/api/transactions/${editingId}`, 'PUT', formData);
-                this.showNotification(`Sale updated successfully at ${this.formatTime(new Date(result.updated_at))}!`, 'success');
+                // This will now correctly show the Karachi time from the server response this.showNotification(`Sale updated successfully at ${this.formatTime(result.updated_at)}!`, 'success');
                 delete document.getElementById('salesForm').dataset.editingId;
             } else {
                 // Create new transaction
@@ -924,33 +932,38 @@ class LeatherShopAccounting {
         }).format(amount);
     }
 
-    formatDate(dateString) {
-        return new Date(dateString).toLocaleDateString('en-PK');
-    }
+    // Utility Methods - UPDATED FOR TIMEZONE SYNC
+formatDate(dateString) {
+    if (!dateString) return '';
+    // Use 'en-PK' and explicit timezone to prevent the 5-hour shift
+    return new Date(dateString).toLocaleDateString('en-PK', {
+        timeZone: 'Asia/Karachi'
+    });
+}
 
-    // NEW: Format time only
-    formatTime(date) {
-        return new Date(date).toLocaleTimeString('en-PK', {
-            hour12: true,
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
+formatTime(date) {
+    if (!date) return '';
+    return new Date(date).toLocaleTimeString('en-PK', {
+        timeZone: 'Asia/Karachi',
+        hour12: true,
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
 
-    // NEW: Format date and time
-    formatDateTime(dateTimeString) {
-        if (!dateTimeString) return '';
-        const date = new Date(dateTimeString);
-        return date.toLocaleString('en-PK', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
-    }
-
+formatDateTime(dateTimeString) {
+    if (!dateTimeString) return '';
+    const date = new Date(dateTimeString);
+    return date.toLocaleString('en-PK', {
+        timeZone: 'Asia/Karachi',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}
     showNotification(message, type = 'success') {
         const notification = document.getElementById('notification');
         const messageEl = document.getElementById('notificationMessage');
@@ -1052,4 +1065,5 @@ window.showPage = function (page) {
 
 // Initialize the application
 const app = new LeatherShopAccounting();
+
 
