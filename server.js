@@ -338,17 +338,9 @@ app.get('/api/transactions', authenticate, async (req, res) => {
     const { start_date, end_date, account_name, type, limit } = req.query;
     
     let query = `
-      SELECT *, 
-             COALESCE(tid, id) as display_id,
-             TO_CHAR(created_at, 'DD Mon YYYY, HH12:MI AM') as created_at_display,
-             TO_CHAR(updated_at, 'DD Mon YYYY, HH12:MI AM') as updated_at_display,
-             TO_CHAR(transaction_time, 'HH12:MI:SS AM') as transaction_time_str,
-             CASE 
-               WHEN created_at = updated_at THEN 'Created: ' || TO_CHAR(created_at, 'DD Mon YYYY, HH12:MI AM')
-               ELSE 'Updated: ' || TO_CHAR(updated_at, 'DD Mon YYYY, HH12:MI AM')
-             END as timestamp_info
-      FROM transactions WHERE 1=1
-    `;
+  SELECT *, COALESCE(tid, id) as display_id 
+  FROM transactions WHERE 1=1
+`;
     const params = [];
     let paramCount = 0;
 
@@ -693,14 +685,10 @@ app.get('/api/transactions/:id', authenticate, async (req, res) => {
     const transactionId = req.params.id;
     
     const result = await db.pool.query(
-      `SELECT *, 
-              COALESCE(tid, id) as display_id,
-              TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI:SS') as created_at_display,
-              TO_CHAR(updated_at, 'DD Mon YYYY, HH24:MI:SS') as updated_at_display,
-              TO_CHAR(transaction_time, 'HH24:MI:SS') as transaction_time_display
-       FROM transactions WHERE id = $1`, 
-      [transactionId]
-    );
+  `SELECT *, COALESCE(tid, id) as display_id 
+   FROM transactions WHERE id = $1`, 
+  [transactionId]
+);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
@@ -776,6 +764,7 @@ app.listen(PORT, () => {
   console.log(`🌐 CORS configured for production`);
   console.log(`⏰ Server time: ${getPakistanTimestamp()}`);
 });
+
 
 
 
