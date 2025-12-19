@@ -424,30 +424,32 @@ class LeatherShopAccounting {
     }
 
     updateRecentTransactions(transactions) {
-        const container = document.getElementById('recentTransactions');
-        
-        if (transactions.length === 0) {
-            container.innerHTML = '<div class="transaction-item"><em>No transactions yet</em></div>';
-            return;
-        }
-
-        container.innerHTML = transactions.slice(0, 5).map(transaction => `
-            <div class="transaction-item">
-                <div class="transaction-info">
-                    <div class="transaction-tid">TID: ${transaction.display_id}</div>
-                    <div class="transaction-date">
-                        ${this.formatDate(transaction.date)}
-                        ${transaction.timestamp_info ? `<br><small class="timestamp">${transaction.timestamp_info}</small>` : ''}
-                    </div>
-                    <div class="transaction-desc">${this.escapeHtml(transaction.description || 'No description')}</div>
-                    <div class="transaction-account">${transaction.account_name}</div>
-                </div>
-                <div class="transaction-amount ${transaction.type}">
-                    ${transaction.type === 'credit' ? '+' : '-'} ${this.formatCurrency(transaction.amount)}
-                </div>
-            </div>
-        `).join('');
+    const container = document.getElementById('recentTransactions');
+    
+    if (transactions.length === 0) {
+        container.innerHTML = '<div class="transaction-item"><em>No transactions yet</em></div>';
+        return;
     }
+
+    container.innerHTML = transactions.slice(0, 5).map(transaction => `
+        <div class="transaction-item">
+            <div class="transaction-info">
+                <div class="transaction-tid">TID: ${transaction.display_id}</div>
+                <div class="transaction-date">
+                    ${this.formatDate(transaction.date)}
+                    <br><small class="timestamp">
+                        ${this.formatDateTime(transaction.created_at)}
+                    </small>
+                </div>
+                <div class="transaction-desc">${this.escapeHtml(transaction.description || 'No description')}</div>
+                <div class="transaction-account">${transaction.account_name}</div>
+            </div>
+            <div class="transaction-amount ${transaction.type}">
+                ${transaction.type === 'credit' ? '+' : '-'} ${this.formatCurrency(transaction.amount)}
+            </div>
+        </div>
+    `).join('');
+}
 
     // Ledger Methods - UPDATED WITH TIMESTAMP DISPLAY
     async loadLedger() {
@@ -477,49 +479,47 @@ class LeatherShopAccounting {
     }
 
     displayLedger(transactions) {
-        const tbody = document.getElementById('ledgerTableBody');
-        
-        if (transactions.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;"><em>No transactions found</em></td></tr>';
-            return;
-        }
+    const tbody = document.getElementById('ledgerTableBody');
     
-        tbody.innerHTML = transactions.map(transaction => `
-            <tr>
-                <td>${transaction.display_id}</td>
-                <td>
-                    <div>${this.formatDate(transaction.date)}</div>
-                    <small class="timestamp">Created: ${transaction.created_at_display || this.formatDateTime(transaction.created_at)}</small>
-                    ${transaction.updated_at_display && transaction.updated_at_display !== transaction.created_at_display ? 
-                        `<small class="timestamp updated">Updated: ${transaction.updated_at_display}</small>` : ''}
-                    ${transaction.transaction_time_str ? `<small class="timestamp time">Time: ${transaction.transaction_time_str}</small>` : ''}
-                </td>
-                <td>
-                    <span class="transaction-type ${transaction.type}">
-                        ${transaction.type === 'credit' ? 'SALE' : 'EXPENSE'}
-                    </span>
-                </td>
-                <td>${transaction.account_name}</td>
-                <td>${this.escapeHtml(transaction.description || '-')}</td>
-                <td class="${transaction.type}">
-                    ${transaction.type === 'credit' ? '+' : '-'} ${this.formatCurrency(transaction.amount)}
-                </td>
-                <td>
-                    <div class="action-buttons-small">
-                        <button class="btn-edit" onclick="app.editTransaction(${transaction.id})" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn-delete" onclick="app.deleteTransaction(${transaction.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                        <button class="btn-info" onclick="app.viewTransactionAudit(${transaction.id})" title="View History">
-                            <i class="fas fa-history"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+    if (transactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;"><em>No transactions found</em></td></tr>';
+        return;
     }
+
+    tbody.innerHTML = transactions.map(transaction => `
+        <tr>
+            <td>${transaction.display_id}</td>
+            <td>
+                <div>${this.formatDate(transaction.date)}</div>
+                <small class="timestamp">
+                    Created: ${this.formatDateTime(transaction.created_at)}
+                </small>
+                ${transaction.updated_at !== transaction.created_at ? 
+                    `<small class="timestamp updated">Updated: ${this.formatDateTime(transaction.updated_at)}</small>` : ''}
+            </td>
+            <td>
+                <span class="transaction-type ${transaction.type}">
+                    ${transaction.type === 'credit' ? 'SALE' : 'EXPENSE'}
+                </span>
+            </td>
+            <td>${transaction.account_name}</td>
+            <td>${this.escapeHtml(transaction.description || '-')}</td>
+            <td class="${transaction.type}">
+                ${transaction.type === 'credit' ? '+' : '-'} ${this.formatCurrency(transaction.amount)}
+            </td>
+            <td>
+                <div class="action-buttons-small">
+                    <button class="btn-edit" onclick="app.editTransaction(${transaction.id})" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn-delete" onclick="app.deleteTransaction(${transaction.id})" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
 
     calculateLedgerSummary(transactions) {
         const summary = transactions.reduce((acc, transaction) => {
@@ -1065,5 +1065,6 @@ window.showPage = function (page) {
 
 // Initialize the application
 const app = new LeatherShopAccounting();
+
 
 
